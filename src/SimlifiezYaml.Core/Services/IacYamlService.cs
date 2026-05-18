@@ -1,0 +1,86 @@
+using SimlifiezYaml.Core.Abstractions;
+using SimlifiezYaml.Core.Enums;
+using SimlifiezYaml.Core.Models;
+using SimlifiezYaml.Core.Yaml;
+
+namespace SimlifiezYaml.Core.Services;
+
+public sealed class IacYamlService : IIacYamlService
+{
+    public IReadOnlyList<string> GenerateIacSteps(InfrastructureAsCodeConfig config, string environment)
+    {
+        return config.Tool switch
+        {
+            IaCTool.Terraform => GenerateTerraform(config, environment),
+            IaCTool.Bicep => new[]
+            {
+                YamlBuilder.Task("AzureCLI@2", new Dictionary<string, string>
+                {
+                    ["azureSubscription"] = config.ServiceConnection,
+                    ["scriptType"] = "pscore",
+                    ["scriptLocation"] = "inlineScript",
+                    ["inlineScript"] = $"az deployment group create -g $(RESOURCE_GROUP) -f {config.WorkingDirectory}/main.bicep"
+                }, $"Deploy Bicep to {environment}")
+            },
+            IaCTool.ArmTemplate => new[]
+            {
+                YamlBuilder.Task("AzureResourceManagerTemplateDeployment@3", new Dictionary<string, string>
+                {
+                    ["deploymentScope"] = "Resource Group",
+                    ["azureResourceManagerConnection"] = config.ServiceConnection,
+                    ["subscriptionId"] = "$(AZURE_SUBSCRIPTION_ID)",
+                    ["resourceGroupName"] = "$(RESOURCE_GROUP)",
+                    ["location"] = "$(AZURE_LOCATION)",
+                    ["templateLocation"] = "Linked artifact",
+                    ["csmFile"] = $"{config.WorkingDirectory}/azuredeploy.json"
+                }, $"Deploy ARM template to {environment}")
+            },
+            IaCTool.PowerShell => new[]
+            {
+                YamlBuilder.PowerShellStep(
+                    $"Set-Location '{config.WorkingDirectory}'; .\\Deploy-Infrastructure.ps1 -Environment {environment}",
+                    "Run PowerShell IaC deployment script")
+            },
+            _ => Array.Empty<string>()
+        };
+    }
+
+    private static IReadOnlyList<string> GenerateTerraform(InfrastructureAsCodeConfig config, string environment)
+    {
+        var steps = new List<string>
+        {
+            YamlBuilder.Task("TerraformTaskV4@4", new Dictionary<string, string>
+            {
+                ["provider"] = "azurerm",
+                ["command"] = "init",
+                ["workingDirectory"] = config.WorkingDirectory,
+                ["backendServiceArm"] = config.ServiceConnection,
+                ["backendAzureRmResourceGroupName"] = "$(TF_STATE_RG)",
+                ["backendAzureRmStorageAccountName"] = "$(TF_STATE_STORAGE)",
+                ["backendAzureRmContainerName"] = "$(TF_STATE_CONTAINER)",
+                ["backendAzureRmKey"] = $"$(Build.DefinitionName)-{environment}.tfstate"
+            }, "Terraform init")
+        };
+
+        steps.Add(YamlBuilder.Task("TerraformTaskV4@4", new Dictionary<string, string>
+        {
+            ["provider"] = "azurerm",
+            ["command"] = "plan",
+            ["workingDirectory"] = config.WorkingDirectory,
+            ["environmentServiceNameAzureRM"] = config.ServiceConnection
+        }, "Terraform plan"));
+
+        if (!config.PlanOnly && (!config.ApplyOnApproval || environment != "prod"))
+        {
+            steps.Add(YamlBuilder.Task("TerraformTaskV4@4", new Dictionary<string, string>
+            {
+                ["provider"] = "azurerm",
+                ["command"] = "apply",
+                ["workingDirectory"] = config.WorkingDirectory,
+                ["environmentServiceNameAzureRM"] = config.ServiceConnection
+            }, "Terraform apply"));
+        }
+
+        return steps;
+    }
+}

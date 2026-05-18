@@ -1,0 +1,41 @@
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --accent: #0078d4;
+  --text: #e8eef5;
+  --muted: #8b9cb3;
+  --error: #e74c3c;
+  --warning: #f39c12;
+  --info: #3498db;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+
+.app-header { padding: 1.5rem 2rem; background: var(--surface); border-bottom: 1px solid #2a3a4f; }
+.app-header h1 { margin: 0; font-size: 1.5rem; }
+.app-header p { margin: 0.25rem 0 0; color: var(--muted); }
+.app-main { padding: 1.5rem 2rem; max-width: 1200px; margin: 0 auto; }
+
+.wizard-nav { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1.5rem; }
+.step-btn { padding: 0.4rem 0.65rem; font-size: 0.75rem; background: var(--surface); border: 1px solid #2a3a4f; color: var(--muted); border-radius: 4px; cursor: pointer; }
+.step-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.wizard-content { background: var(--surface); padding: 1.5rem; border-radius: 8px; min-height: 320px; }
+.form-control { display: block; width: 100%; max-width: 480px; margin: 0.5rem 0 1rem; padding: 0.5rem; background: var(--bg); border: 1px solid #2a3a4f; color: var(--text); border-radius: 4px; }
+
+.yaml-preview { background: #0a0e14; padding: 1rem; overflow: auto; max-height: 480px; font-size: 0.8rem; border-radius: 4px; border: 1px solid #2a3a4f; }
+.info-box { background: #1e3a5f; padding: 0.75rem 1rem; border-radius: 4px; margin-top: 1rem; font-size: 0.9rem; }
+.card { padding: 0.75rem; margin-bottom: 0.5rem; border: 1px solid #2a3a4f; border-radius: 4px; }
+
+.btn-primary, .wizard-footer button { padding: 0.5rem 1rem; background: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 0.5rem; }
+.wizard-footer { margin-top: 1.5rem; }
+
+.severity-error { color: var(--error); }
+.severity-warning { color: var(--warning); }
+.severity-info { color: var(--info); }
+
+.template-list { padding-left: 1.25rem; }
+.template-list li { margin-bottom: 0.5rem; }
+.dep-graph { font-size: 0.9rem; color: var(--muted); }
+.dep-graph li { margin-bottom: 0.35rem; }
