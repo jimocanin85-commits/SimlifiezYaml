@@ -27,10 +27,37 @@ public sealed class RepoScannerService : IRepoScannerService
         if (!Directory.Exists(rootPath))
             return new RepoScanResult { ProjectType = ProjectType.Unknown };
 
-        var files = Directory.EnumerateFiles(rootPath, "*.*", SearchOption.AllDirectories)
-            .Select(f => Path.GetRelativePath(rootPath, f).Replace('\\', '/'))
-            .ToList();
-        return ScanFileList(files);
+        try
+        {
+            var files = Directory.EnumerateFiles(rootPath, "*.*", SearchOption.AllDirectories)
+                .Select(f => Path.GetRelativePath(rootPath, f).Replace('\\', '/'))
+                .ToList();
+            return ScanFileList(files);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return new RepoScanResult
+            {
+                ProjectType = ProjectType.Unknown,
+                TemplateRecommendations = new[] { $"Access denied scanning {rootPath}: {ex.Message}" }
+            };
+        }
+        catch (System.IO.IOException ex)
+        {
+            return new RepoScanResult
+            {
+                ProjectType = ProjectType.Unknown,
+                TemplateRecommendations = new[] { $"I/O error scanning {rootPath}: {ex.Message}" }
+            };
+        }
+        catch (Exception ex)
+        {
+            return new RepoScanResult
+            {
+                ProjectType = ProjectType.Unknown,
+                TemplateRecommendations = new[] { $"Error scanning repository: {ex.GetType().Name}: {ex.Message}" }
+            };
+        }
     }
 
     public RepoScanResult ScanFileList(IReadOnlyList<string> relativePaths)

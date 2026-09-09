@@ -12,9 +12,7 @@ public sealed class TestStageGenerator : IStageGenerator
 
     public string Generate(PipelineDefinition definition)
     {
-        var pool = definition.BuildAgent == BuildAgentType.SelfHosted
-            ? $"name: '{definition.PoolName ?? "Default"}'"
-            : "vmImage: 'windows-latest'";
+        var pool = PoolConfigurationHelper.GeneratePoolConfiguration(definition.BuildAgent, definition.PoolName);
 
         var steps = new StringBuilder();
         if (definition.ProjectType == ProjectType.DotNet)

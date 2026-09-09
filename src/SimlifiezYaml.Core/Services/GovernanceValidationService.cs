@@ -7,6 +7,13 @@ namespace SimlifiezYaml.Core.Services;
 
 public sealed class GovernanceValidationService : IGovernanceValidationService
 {
+    private readonly IVariableGroupService _variableGroupService;
+
+    public GovernanceValidationService(IVariableGroupService variableGroupService)
+    {
+        _variableGroupService = variableGroupService ?? throw new ArgumentNullException(nameof(variableGroupService));
+    }
+
     public IReadOnlyList<ValidationResult> Validate(PipelineDefinition definition, string yaml)
     {
         var results = new List<ValidationResult>();
@@ -73,14 +80,24 @@ public sealed class GovernanceValidationService : IGovernanceValidationService
                     });
                 }
             }
-            catch (RegexParseException)
+            catch (RegexParseException ex)
             {
                 results.Add(new ValidationResult
                 {
-                    Severity = ValidationSeverity.Warning,
-                    Message = "Governance naming convention regex is invalid.",
+                    Severity = ValidationSeverity.Error,
+                    Message = $"Governance naming convention regex is invalid: {ex.Message}",
                     AffectedField = nameof(GovernancePolicyConfig.NamingConvention),
                     SuggestedFix = "Provide a valid regular expression for pipeline naming."
+                });
+            }
+            catch (Exception ex)
+            {
+                results.Add(new ValidationResult
+                {
+                    Severity = ValidationSeverity.Error,
+                    Message = $"Error validating naming convention: {ex.GetType().Name}: {ex.Message}",
+                    AffectedField = nameof(GovernancePolicyConfig.NamingConvention),
+                    SuggestedFix = "Review naming convention configuration."
                 });
             }
         }
@@ -113,7 +130,7 @@ public sealed class GovernanceValidationService : IGovernanceValidationService
             }
         }
 
-        results.AddRange(new VariableGroupService().Validate(definition.VariableGroups, governance));
+        results.AddRange(_variableGroupService.Validate(definition.VariableGroups, governance));
         return results;
     }
 }

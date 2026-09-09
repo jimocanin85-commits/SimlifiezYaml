@@ -5,17 +5,45 @@ using SimlifiezYaml.Core.Models;
 
 namespace SimlifiezYaml.Core.Services;
 
+/// <summary>
+/// Service for scanning YAML content for plaintext secrets with resilient pattern matching.
+/// Handles invalid regex patterns gracefully with logging.
+/// </summary>
 public sealed class SecretsGovernanceService : ISecretsGovernanceService
 {
-    private static readonly (Regex Pattern, string Label, SecretSeverity Severity)[] SecretPatterns =
+    private static readonly (Regex Pattern, string Label, SecretSeverity Severity)[] SecretPatterns = InitializePatterns();
+
+    /// <summary>
+    /// Safely initializes secret detection patterns with error handling for invalid regex.
+    /// </summary>
+    private static (Regex Pattern, string Label, SecretSeverity Severity)[] InitializePatterns()
     {
-        (new Regex(@"password\s*[:=]\s*['""]?[^'""$\s][^'""\n]{3,}", RegexOptions.IgnoreCase), "password", SecretSeverity.Error),
-        (new Regex(@"connectionstring\s*[:=]\s*['""]?[^'""$\s]", RegexOptions.IgnoreCase), "connection string", SecretSeverity.Error),
-        (new Regex(@"clientsecret\s*[:=]\s*['""]?[^'""$\s]", RegexOptions.IgnoreCase), "client secret", SecretSeverity.Error),
-        (new Regex(@"-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----", RegexOptions.IgnoreCase), "private key", SecretSeverity.Error),
-        (new Regex(@"(api[_-]?key|token)\s*[:=]\s*['""]?[a-zA-Z0-9]{16,}", RegexOptions.IgnoreCase), "token or API key", SecretSeverity.Warning),
-        (new Regex(@"AccountKey=[^;$\s]+", RegexOptions.IgnoreCase), "storage account key", SecretSeverity.Error)
-    };
+        var patterns = new List<(Regex, string, SecretSeverity)>();
+        var patternConfigs = new[]
+        {
+            (@"password\s*[:=]\s*['""]?[^'""$\s][^'""\n]{3,}", "password", SecretSeverity.Error),
+            (@"connectionstring\s*[:=]\s*['""]?[^'""$\s]", "connection string", SecretSeverity.Error),
+            (@"clientsecret\s*[:=]\s*['""]?[^'""$\s]", "client secret", SecretSeverity.Error),
+            (@"-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----", "private key", SecretSeverity.Error),
+            (@"(api[_-]?key|token)\s*[:=]\s*['""]?[a-zA-Z0-9]{16,}", "token or API key", SecretSeverity.Warning),
+            (@"AccountKey=[^;$\s]+", "storage account key", SecretSeverity.Error)
+        };
+
+        foreach (var (patternStr, label, severity) in patternConfigs)
+        {
+            try
+            {
+                patterns.Add((new Regex(patternStr, RegexOptions.IgnoreCase), label, severity));
+            }
+            catch (RegexParseException ex)
+            {
+                // Log but continue with other patterns
+                System.Diagnostics.Debug.WriteLine($"Invalid regex pattern for '{label}': {ex.Message}");
+            }
+        }
+
+        return patterns.ToArray();
+    }
 
     public IReadOnlyList<SecretGovernanceResult> ScanYaml(string yaml)
     {
