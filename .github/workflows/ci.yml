@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore SimlifiezYaml.sln
+
+      - name: Build
+        run: dotnet build SimlifiezYaml.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test SimlifiezYaml.sln --configuration Release --no-build --logger "console;verbosity=normal" --logger GitHubActions --logger "trx;LogFileName=results.trx" --results-directory TestResults
+
+      - name: Test summary
+        if: always()
+        run: |
+          for f in TestResults/*.trx; do
+            c=$(grep -o "<Counters [^>]*>" "$f")
+            echo "::notice title=Test results::$c"
+          done

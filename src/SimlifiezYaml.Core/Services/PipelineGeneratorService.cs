@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using SimlifiezYaml.Core.Abstractions;
+using SimlifiezYaml.Core.Enums;
 using SimlifiezYaml.Core.Generators;
 using SimlifiezYaml.Core.Models;
 
@@ -84,7 +85,7 @@ public sealed class PipelineGeneratorService : IPipelineGeneratorService
                 .AddIacStage(definition.IaC, _iacService, definition.Environments)
                 .AddStage(_deploymentGenerator.Generate(definition))
                 .AddRollbackStage(definition.Rollback, _rollbackService, definition.Environments)
-                .AddNotificationStage(definition.Notifications, _notificationGenerator, definition);
+                .AddNotificationStages(definition.Notifications, _notificationGenerator, definition);
 
             var yaml = assembler.Build();
             
@@ -96,8 +97,8 @@ public sealed class PipelineGeneratorService : IPipelineGeneratorService
             if (definition.AgentDiagnostics != null)
                 diagnosticScript = _agentDiagnosticsService.GenerateDiagnosticScript(definition.AgentDiagnostics);
 
-            var errorCount = validation.Count(v => v.Severity == Models.ValidationSeverity.Error);
-            var warningCount = validation.Count(v => v.Severity == Models.ValidationSeverity.Warning);
+            var errorCount = validation.Count(v => v.Severity == ValidationSeverity.Error);
+            var warningCount = validation.Count(v => v.Severity == ValidationSeverity.Warning);
             
             _logger.LogInformation(
                 "Pipeline generation completed for {PipelineName}: {YamlLength} chars, {ErrorCount} errors, {WarningCount} warnings",

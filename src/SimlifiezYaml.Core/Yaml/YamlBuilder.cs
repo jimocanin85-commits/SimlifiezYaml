@@ -1,26 +1,39 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace SimlifiezYaml.Core.Yaml;
 
 /// <summary>
-/// YAML builder with proper escaping for PowerShell scripts and YAML string values.
-/// Prevents script injection and YAML syntax errors.
+/// Helpers for emitting Azure DevOps YAML fragments.
 /// </summary>
+/// <remarks>
+/// Escaping rules:
+/// <list type="bullet">
+/// <item>Scripts are emitted as YAML literal block scalars (<c>|</c>), which need no escaping —
+/// the script text reaches the agent exactly as written. Do NOT escape whole scripts.</item>
+/// <item>User-supplied values that are placed <i>inside</i> a PowerShell script must be quoted
+/// with <see cref="PsLiteral"/> so they cannot break out of the string.</item>
+/// <item>Scalar values (task inputs, display names) are written as YAML single-quoted strings,
+/// where the only escape is doubling the single quote. Backslashes are literal.</item>
+/// </list>
+/// </remarks>
 public static class YamlBuilder
 {
+    private static readonly Regex NonIdentifierChars = new("[^A-Za-z0-9_]", RegexOptions.Compiled);
+
     public static string Indent(string content, int spaces = 2)
     {
         var pad = new string(' ', spaces);
-        var lines = content.Split('\n');
+        var lines = NormalizeNewLines(content).Split('\n');
         var sb = new StringBuilder();
         foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line))
             {
-                sb.AppendLine();
+                sb.Append('\n');
                 continue;
             }
-            sb.Append(pad).AppendLine(line.TrimEnd('\r'));
+            sb.Append(pad).Append(line).Append('\n');
         }
         return sb.ToString().TrimEnd();
     }
@@ -29,65 +42,75 @@ public static class YamlBuilder
     {
         var pad = new string(' ', indent);
         var sb = new StringBuilder();
-        sb.Append(pad).Append("- task: ").AppendLine(taskName);
+        sb.Append(pad).Append("- task: ").Append(taskName).Append('\n');
         if (!string.IsNullOrEmpty(displayName))
-            sb.Append(pad).Append("  displayName: '").Append(EscapeYamlString(displayName)).AppendLine("'");
-        sb.Append(pad).AppendLine("  inputs:");
+            sb.Append(pad).Append("  displayName: ").Append(YamlString(displayName)).Append('\n');
+        sb.Append(pad).Append("  inputs:\n");
         foreach (var (key, value) in inputs)
-            sb.Append(pad).Append("    ").Append(key).Append(": '").Append(EscapeYamlString(value)).AppendLine("'");
+            sb.Append(pad).Append("    ").Append(key).Append(": ").Append(YamlString(value)).Append('\n');
         return sb.ToString().TrimEnd();
     }
 
-    public static string PowerShellStep(string script, string displayName, int indent = 4)
+    /// <summary>
+    /// Emits a <c>powershell:</c> step. The script is written verbatim as a literal block scalar.
+    /// </summary>
+    public static string PowerShellStep(string script, string displayName, int indent = 4, string? condition = null)
     {
         var pad = new string(' ', indent);
-        var escaped = EscapePowerShellString(script);
-        var escapedName = EscapeYamlString(displayName);
-        return $"""
-{pad}- powershell: |
-{pad}    {escaped.Replace("\n", "\n" + pad + "    ")}
-{pad}  displayName: '{escapedName}'
-""".TrimEnd();
+        var body = new string(' ', indent + 4);
+        var sb = new StringBuilder();
+        sb.Append(pad).Append("- powershell: |\n");
+        foreach (var line in NormalizeNewLines(script).TrimEnd('\n').Split('\n'))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                sb.Append('\n');
+            else
+                sb.Append(body).Append(line.TrimEnd()).Append('\n');
+        }
+        sb.Append(pad).Append("  displayName: ").Append(YamlString(displayName)).Append('\n');
+        if (!string.IsNullOrWhiteSpace(condition))
+            sb.Append(pad).Append("  condition: ").Append(condition).Append('\n');
+        return sb.ToString().TrimEnd();
     }
 
-    public static string ScriptStep(string scriptPath, string displayName, int indent = 4)
+    public static string ScriptStep(string script, string displayName, int indent = 4)
     {
         var pad = new string(' ', indent);
-        var escapedPath = EscapeYamlString(scriptPath);
-        var escapedName = EscapeYamlString(displayName);
-        return $"{pad}- script: {escapedPath}\n{pad}  displayName: '{escapedName}'";
+        return $"{pad}- script: {YamlString(script)}\n{pad}  displayName: {YamlString(displayName)}";
     }
 
     /// <summary>
-    /// Escapes a string for use in YAML single-quoted string values.
+    /// Quotes a value as a YAML single-quoted scalar. In single-quoted YAML the only escape
+    /// is <c>''</c> for a literal quote; backslashes are NOT escape characters.
     /// </summary>
-    private static string EscapeYamlString(string? value)
+    public static string YamlString(string? value)
     {
-        if (string.IsNullOrEmpty(value))
-            return value ?? string.Empty;
-        
-        // In YAML, single quotes are escaped by doubling them
-        return value.Replace("'", "''").Replace("\\", "\\\\");
+        var singleLine = NormalizeNewLines(value ?? string.Empty).Replace("\n", " ");
+        return "'" + singleLine.Replace("'", "''") + "'";
     }
 
     /// <summary>
-    /// Escapes a string for safe use in PowerShell inline scripts.
+    /// Quotes a value as a PowerShell single-quoted (verbatim) string literal, e.g. for
+    /// user-supplied paths, service names or URLs placed inside a generated script.
+    /// Single-quoted PowerShell strings do not expand <c>$variables</c> or <c>$(subexpressions)</c>.
+    /// Note that Azure DevOps macro syntax <c>$(Name)</c> is still expanded by the agent before
+    /// PowerShell runs, which is the intended way to reference pipeline variables.
     /// </summary>
-    private static string EscapePowerShellString(string? value)
+    public static string PsLiteral(string? value)
     {
-        if (string.IsNullOrEmpty(value))
-            return value ?? string.Empty;
-        
-        // Escape for PowerShell literal strings (single-quoted)
-        // Single quotes are escaped by doubling, dollar signs need backtick in some contexts
-        return value
-            .Replace("'", "''")
-            .Replace("$(", "$([")  // Prevent subexpression execution
-            .Replace("${", "${"); // Alternative subexpression
+        var singleLine = NormalizeNewLines(value ?? string.Empty).Replace("\n", " ");
+        // PowerShell also treats the typographic quotes ‘ ’ ‚ ‛ as single quotes.
+        var escaped = Regex.Replace(singleLine, "['‘’‚‛]", m => m.Value + m.Value);
+        return "'" + escaped + "'";
     }
 
     /// <summary>
-    /// Legacy escape method for backward compatibility.
+    /// Converts a name (for example an environment such as <c>pre-prod</c>) into a valid
+    /// Azure DevOps stage or job identifier, which may contain only letters, digits and underscores.
     /// </summary>
-    private static string Escape(string value) => EscapeYamlString(value);
+    public static string ToIdentifier(string name) =>
+        NonIdentifierChars.Replace(name ?? string.Empty, "_");
+
+    private static string NormalizeNewLines(string value) =>
+        value.Replace("\r\n", "\n").Replace('\r', '\n');
 }

@@ -38,7 +38,7 @@ public sealed class IacYamlService : IIacYamlService
             IaCTool.PowerShell => new[]
             {
                 YamlBuilder.PowerShellStep(
-                    $"Set-Location '{config.WorkingDirectory}'; .\\Deploy-Infrastructure.ps1 -Environment {environment}",
+                    $"Set-Location {YamlBuilder.PsLiteral(config.WorkingDirectory)}; .\\Deploy-Infrastructure.ps1 -Environment {YamlBuilder.PsLiteral(environment)}",
                     "Run PowerShell IaC deployment script")
             },
             _ => Array.Empty<string>()

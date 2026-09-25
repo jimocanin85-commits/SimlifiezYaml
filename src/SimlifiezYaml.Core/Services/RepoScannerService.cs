@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SimlifiezYaml.Core.Abstractions;
 using SimlifiezYaml.Core.Enums;
 using SimlifiezYaml.Core.Models;
@@ -39,7 +40,7 @@ public sealed class RepoScannerService : IRepoScannerService
             return new RepoScanResult
             {
                 ProjectType = ProjectType.Unknown,
-                TemplateRecommendations = new[] { $"Access denied scanning {rootPath}: {ex.Message}" }
+                ScanError = $"Access denied scanning {rootPath}: {ex.Message}"
             };
         }
         catch (System.IO.IOException ex)
@@ -47,7 +48,7 @@ public sealed class RepoScannerService : IRepoScannerService
             return new RepoScanResult
             {
                 ProjectType = ProjectType.Unknown,
-                TemplateRecommendations = new[] { $"I/O error scanning {rootPath}: {ex.Message}" }
+                ScanError = $"I/O error scanning {rootPath}: {ex.Message}"
             };
         }
         catch (Exception ex)
@@ -55,7 +56,7 @@ public sealed class RepoScannerService : IRepoScannerService
             return new RepoScanResult
             {
                 ProjectType = ProjectType.Unknown,
-                TemplateRecommendations = new[] { $"Error scanning repository: {ex.GetType().Name}: {ex.Message}" }
+                ScanError = $"Error scanning repository: {ex.GetType().Name}: {ex.Message}"
             };
         }
     }
@@ -84,11 +85,14 @@ public sealed class RepoScannerService : IRepoScannerService
         return builder.Build();
     }
 
+    /// <summary>
+    /// Matches a simple glob (<c>*</c> wildcards only) against the file name part of <paramref name="path"/>.
+    /// </summary>
     private static bool MatchesPattern(string path, string pattern)
     {
-        if (pattern.StartsWith('*'))
-            return path.EndsWith(pattern[1..], StringComparison.OrdinalIgnoreCase);
-        return path.Contains(pattern, StringComparison.OrdinalIgnoreCase);
+        var fileName = path.Replace('\\', '/').Split('/').Last();
+        var regex = "^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$";
+        return Regex.IsMatch(fileName, regex, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     private sealed class RepoScanResultBuilder

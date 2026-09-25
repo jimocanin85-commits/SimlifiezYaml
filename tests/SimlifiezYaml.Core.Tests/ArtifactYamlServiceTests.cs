@@ -23,6 +23,6 @@ public class ArtifactYamlServiceTests
     public void GenerateDownloadSteps_UsesPipelineArtifactTask()
     {
         var steps = _sut.GenerateDownloadSteps(new ArtifactConfig { ArtifactType = ArtifactType.PipelineArtifact, ArtifactName = "drop" }, "test");
-        Assert.Contains(steps[0], "DownloadPipelineArtifact@2");
+        Assert.Contains("DownloadPipelineArtifact@2", steps[0]);
     }
 }
