@@ -111,7 +111,7 @@ public class GeneratedYamlTests
         var stages = StagesOf(Parse(yaml));
 
         var preProd = Assert.Single(stages, s => (string)s["stage"] == "Deploy_pre_prod");
-        var job = Assert.Single(JobsOf(preProd));
+        var job = DeployJob(preProd);
         Assert.Equal("pre-prod", (string)job["environment"]);
         Assert.Equal("DeployTopre_prod", (string)job["deployment"]);
     }
