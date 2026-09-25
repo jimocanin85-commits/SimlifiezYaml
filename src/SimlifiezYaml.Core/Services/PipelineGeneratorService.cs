@@ -3,6 +3,7 @@ using SimlifiezYaml.Core.Abstractions;
 using SimlifiezYaml.Core.Enums;
 using SimlifiezYaml.Core.Generators;
 using SimlifiezYaml.Core.Models;
+using SimlifiezYaml.Core.Yaml;
 
 namespace SimlifiezYaml.Core.Services;
 
@@ -22,8 +23,6 @@ public sealed class PipelineGeneratorService : IPipelineGeneratorService
     private readonly GovernanceValidator _governanceValidator;
     private readonly IYamlExplanationService _explanationService;
     private readonly IAgentDiagnosticsService _agentDiagnosticsService;
-    private readonly IIacYamlService _iacService;
-    private readonly IRollbackYamlService _rollbackService;
     private readonly ILogger<PipelineGeneratorService> _logger;
 
     public PipelineGeneratorService(
@@ -37,8 +36,6 @@ public sealed class PipelineGeneratorService : IPipelineGeneratorService
         GovernanceValidator governanceValidator,
         IYamlExplanationService explanationService,
         IAgentDiagnosticsService agentDiagnosticsService,
-        IIacYamlService iacService,
-        IRollbackYamlService rollbackService,
         ILogger<PipelineGeneratorService> logger)
     {
         _variableGroupService = variableGroupService;
@@ -51,8 +48,6 @@ public sealed class PipelineGeneratorService : IPipelineGeneratorService
         _governanceValidator = governanceValidator;
         _explanationService = explanationService;
         _agentDiagnosticsService = agentDiagnosticsService;
-        _iacService = iacService;
-        _rollbackService = rollbackService;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -75,16 +70,14 @@ public sealed class PipelineGeneratorService : IPipelineGeneratorService
             // Build YAML using fluent assembler pattern
             var assembler = new PipelineYamlAssembler()
                 .AddHeader(definition.Name)
-                .AddTrigger(definition.Trigger.IncludeBranches.ToArray())
+                .AddTrigger(definition.Trigger)
                 .AddVariables(_variableGroupService.GeneratePipelineVariables(definition))
+                .AddPool(PoolConfigurationHelper.GeneratePoolConfiguration(definition.BuildAgent, definition.PoolName))
                 .StartStages()
-                .AddKeyVaultStage(definition.KeyVault, _keyVaultService)
                 .AddStage(_buildGenerator.Generate(definition))
                 .AddStage(_testGenerator.Generate(definition))
                 .AddStage(_artifactGenerator.Generate(definition))
-                .AddIacStage(definition.IaC, _iacService, definition.Environments)
                 .AddStage(_deploymentGenerator.Generate(definition))
-                .AddRollbackStage(definition.Rollback, _rollbackService, definition.Environments)
                 .AddNotificationStages(definition.Notifications, _notificationGenerator, definition);
 
             var yaml = assembler.Build();

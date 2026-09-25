@@ -14,5 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\SimlifiezYaml.Core\SimlifiezYaml.Core.csproj" />
+    <ProjectReference Include="..\..\src\SimlifiezYaml.Web\SimlifiezYaml.Web.csproj" />
   </ItemGroup>
 </Project>

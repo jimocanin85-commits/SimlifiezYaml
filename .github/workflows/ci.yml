@@ -28,6 +28,7 @@ jobs:
       - name: Test summary
         if: always()
         run: |
+          shopt -s nullglob
           for f in TestResults/*.trx; do
             c=$(grep -o "<Counters [^>]*>" "$f")
             echo "::notice title=Test results::$c"

@@ -73,7 +73,7 @@ public static class PipelineDefinitionValidator
         {
             foreach (var hc in definition.HealthChecks)
             {
-                if (hc.Enabled && hc.HealthCheckType == HealthCheckType.HttpEndpoint && !Uri.TryCreate(hc.Url, UriKind.Absolute, out _))
+                if (hc.Enabled && hc.HealthCheckType == HealthCheckType.HttpEndpoint && !Uri.TryCreate(hc.Url?.Replace("{environment}", "env", StringComparison.OrdinalIgnoreCase), UriKind.Absolute, out _))
                     errors.Add("HTTP health check requires a valid endpoint URL.");
             }
         }

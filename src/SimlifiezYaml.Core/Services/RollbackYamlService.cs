@@ -5,106 +5,184 @@ using SimlifiezYaml.Core.Yaml;
 
 namespace SimlifiezYaml.Core.Services;
 
+/// <summary>
+/// Backup and rollback steps. Backups are taken in the deploy job right before deploying, into
+/// <c>{BackupPath}\{environment}\{BuildId}</c>. Rollback runs in the same deployment job's
+/// <c>on: failure</c> hook, on the same server, and restores that exact backup.
+/// </summary>
 public sealed class RollbackYamlService : IRollbackYamlService
 {
-    public IReadOnlyList<string> GenerateBackupSteps(RollbackConfig config, string environment)
+    public RollbackTarget ResolveTarget(RollbackConfig config, DeploymentConfig deployment) => deployment.Kind switch
+    {
+        DeploymentKind.Iis => RollbackTarget.Iis,
+        DeploymentKind.WindowsService => RollbackTarget.WindowsService,
+        DeploymentKind.FileShare => RollbackTarget.FileShare,
+        DeploymentKind.AzureAppService => RollbackTarget.AzureAppServiceSlot,
+        DeploymentKind.DockerContainer => RollbackTarget.DockerContainer,
+        _ => config.Target
+    };
+
+    public IReadOnlyList<string> GenerateBackupSteps(RollbackConfig config, DeploymentConfig deployment, string environment)
     {
         if (!config.Enabled) return Array.Empty<string>();
 
-        var backupPath = config.BackupPath ?? $"D:\\backups\\{environment}\\$(Build.BuildId)";
+        var header = BackupHeader(config, environment);
+        var retention = Math.Max(1, config.RetentionCount);
+        var prune = $$"""
+Get-ChildItem -Path $envRoot -Directory | Sort-Object LastWriteTime -Descending |
+  Select-Object -Skip {{retention}} | Remove-Item -Recurse -Force
+""";
 
-        return config.Target switch
+        return ResolveTarget(config, deployment) switch
         {
             RollbackTarget.Iis => new[]
             {
-                YamlBuilder.PowerShellStep($"""
-$backupRoot = {YamlBuilder.PsLiteral(backupPath)}
-New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
-$sitePath = 'C:\inetpub\wwwroot'
-Copy-Item -Path $sitePath -Destination $backupRoot -Recurse -Force
-Write-Host "IIS backup created at $backupRoot"
-""", "Backup IIS site before deploy")
+                YamlBuilder.PowerShellStep($$"""
+{{header}}
+$site = {{YamlBuilder.PsLiteral(deployment.WebsiteNameOrDefault)}}
+$target = {{TargetOrNull(deployment)}}
+{{PowerShellSnippets.ResolveIisSitePath}}
+{{PowerShellSnippets.SyncFolderFunction}}
+if (Test-Path $target) {
+  Sync-Folder -Source $target -Destination $backup
+  Write-Host "Backed up $target to $backup"
+} else {
+  Write-Host "Nothing to back up: $target does not exist yet"
+}
+{{prune}}
+""", "Back up IIS site before deploy")
             },
-            RollbackTarget.WindowsService => new[]
-            {
-                YamlBuilder.PowerShellStep($"""
-$backupRoot = {YamlBuilder.PsLiteral(backupPath)}
-New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
-Stop-Service -Name 'MyService' -Force -ErrorAction SilentlyContinue
-Copy-Item -Path 'C:\Services\MyService' -Destination $backupRoot -Recurse -Force
-Write-Host 'Windows Service backup completed'
-""", "Backup Windows Service before deploy")
-            },
-            RollbackTarget.FileShare => new[]
+            RollbackTarget.WindowsService or RollbackTarget.FileShare => new[]
             {
                 YamlBuilder.PowerShellStep($$"""
-$backupRoot = {{YamlBuilder.PsLiteral(backupPath)}}
-robocopy '\\fileserver\deploy' $backupRoot /MIR /R:2 /W:5
-if ($LASTEXITCODE -ge 8) { throw 'File share backup failed' }
-""", "Backup file share deployment")
-            },
-            RollbackTarget.AzureAppServiceSlot => new[]
-            {
-                YamlBuilder.Task("AzureAppServiceManage@0", new Dictionary<string, string>
-                {
-                    ["Action"] = "Swap Slots",
-                    ["WebAppName"] = "$(WEBAPP_NAME)",
-                    ["ResourceGroupName"] = "$(RESOURCE_GROUP)",
-                    ["SourceSlot"] = "production",
-                    ["SwapWithProduction"] = "false"
-                }, "Prepare App Service slot for rollback")
+{{header}}
+$target = {{YamlBuilder.PsLiteral(deployment.TargetPathOrDefault)}}
+{{PowerShellSnippets.SyncFolderFunction}}
+if (Test-Path $target) {
+  Sync-Folder -Source $target -Destination $backup
+  Write-Host "Backed up $target to $backup"
+} else {
+  Write-Host "Nothing to back up: $target does not exist yet"
+}
+{{prune}}
+""", "Back up deployment folder before deploy")
             },
             RollbackTarget.DockerContainer => new[]
             {
-                YamlBuilder.PowerShellStep($"""
-docker tag $(IMAGE_NAME):latest $(IMAGE_NAME):backup-$(Build.BuildId)
-Write-Host 'Docker image tagged for rollback'
-""", "Tag Docker image for rollback")
+                YamlBuilder.PowerShellStep($$"""
+{{header}}
+# Windows PowerShell 5.1 turns redirected native stderr into errors under 'Stop'.
+$ErrorActionPreference = 'Continue'
+$name = {{YamlBuilder.PsLiteral(deployment.ContainerNameOrDefault)}}
+$info = docker inspect $name 2>$null | ConvertFrom-Json
+$global:LASTEXITCODE = 0
+if ($info) {
+  New-Item -ItemType Directory -Force -Path $backup | Out-Null
+  Set-Content -Path (Join-Path $backup 'image.txt') -Value $info[0].Config.Image
+  Write-Host "Recorded running image $($info[0].Config.Image)"
+} else {
+  Write-Host "Nothing to back up: container $name is not running"
+}
+{{prune}}
+""", "Record running container image before deploy")
             },
+            // App Service: the slot-swap strategy keeps the previous version in the staging slot.
             _ => Array.Empty<string>()
         };
     }
 
-    public IReadOnlyList<string> GenerateRollbackSteps(RollbackConfig config)
+    public IReadOnlyList<string> GenerateRollbackSteps(RollbackConfig config, DeploymentConfig deployment, string environment)
     {
         if (!config.Enabled) return Array.Empty<string>();
 
         if (!string.IsNullOrWhiteSpace(config.RollbackScript))
             return new[] { YamlBuilder.ScriptStep(config.RollbackScript, "Execute custom rollback script") };
 
-        return config.Target switch
+        var header = BackupHeader(config, environment);
+        var requireBackup = """
+if (-not (Test-Path $backup)) {
+  Write-Warning "No backup found at $backup (first deployment?). Nothing to roll back."
+  exit 0
+}
+""";
+
+        return ResolveTarget(config, deployment) switch
         {
             RollbackTarget.Iis => new[]
             {
                 YamlBuilder.PowerShellStep($$"""
-$backupRoot = {{YamlBuilder.PsLiteral(config.BackupPath ?? "D:\\backups")}}
-$latest = Get-ChildItem $backupRoot | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $latest) { throw 'No backup found for rollback' }
-Copy-Item -Path $latest.FullName -Destination 'C:\inetpub\wwwroot' -Recurse -Force
-Write-Host 'IIS rollback completed'
-""", "Rollback IIS deployment")
+{{header}}
+{{requireBackup}}
+$site = {{YamlBuilder.PsLiteral(deployment.WebsiteNameOrDefault)}}
+$target = {{TargetOrNull(deployment)}}
+{{PowerShellSnippets.ResolveIisSitePath}}
+{{PowerShellSnippets.SyncFolderFunction}}
+Sync-Folder -Source $backup -Destination $target -Mirror
+Write-Host "Restored $target from $backup"
+""", "Roll back IIS site")
             },
-            RollbackTarget.AzureAppServiceSlot => new[]
+            RollbackTarget.WindowsService => new[]
             {
-                YamlBuilder.Task("AzureAppServiceManage@0", new Dictionary<string, string>
-                {
-                    ["Action"] = "Swap Slots",
-                    ["WebAppName"] = "$(WEBAPP_NAME)",
-                    ["ResourceGroupName"] = "$(RESOURCE_GROUP)",
-                    ["SourceSlot"] = "staging",
-                    ["SwapWithProduction"] = "true"
-                }, "Rollback via App Service slot swap")
+                YamlBuilder.PowerShellStep($$"""
+{{header}}
+{{requireBackup}}
+$service = {{YamlBuilder.PsLiteral(deployment.ServiceNameOrDefault)}}
+$target = {{YamlBuilder.PsLiteral(deployment.TargetPathOrDefault)}}
+{{PowerShellSnippets.SyncFolderFunction}}
+Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
+Sync-Folder -Source $backup -Destination $target -Mirror
+Start-Service -Name $service
+Write-Host "Restored $target from $backup and restarted $service"
+""", "Roll back Windows service")
+            },
+            RollbackTarget.FileShare => new[]
+            {
+                YamlBuilder.PowerShellStep($$"""
+{{header}}
+{{requireBackup}}
+$target = {{YamlBuilder.PsLiteral(deployment.TargetPathOrDefault)}}
+{{PowerShellSnippets.SyncFolderFunction}}
+Sync-Folder -Source $backup -Destination $target -Mirror
+Write-Host "Restored $target from $backup"
+""", "Roll back file share")
             },
             RollbackTarget.DockerContainer => new[]
             {
-                YamlBuilder.PowerShellStep(
-                    "docker pull $(IMAGE_NAME):backup-$(Build.BuildId); docker tag $(IMAGE_NAME):backup-$(Build.BuildId) $(IMAGE_NAME):latest",
-                    "Rollback Docker container")
+                YamlBuilder.PowerShellStep($$"""
+{{header}}
+# Windows PowerShell 5.1 turns redirected native stderr into errors under 'Stop'.
+$ErrorActionPreference = 'Continue'
+$record = Join-Path $backup 'image.txt'
+if (-not (Test-Path $record)) {
+  Write-Warning "No previous image recorded at $record. Nothing to roll back."
+  exit 0
+}
+$image = (Get-Content -Path $record -Raw).Trim()
+$name = {{YamlBuilder.PsLiteral(deployment.ContainerNameOrDefault)}}
+docker rm -f $name 2>$null
+docker run -d --name $name --restart unless-stopped $image
+{{PowerShellSnippets.ThrowOnNativeFailure}}
+Write-Host "Rolled back container $name to $image"
+""", "Roll back Docker container")
             },
             _ => new[]
             {
-                YamlBuilder.PowerShellStep("Write-Warning 'Configure RollbackScript for this target type'", "Rollback placeholder")
+                // Swapping back automatically is unsafe: if the failure happened before the swap,
+                // swapping would move the broken build into production.
+                YamlBuilder.PowerShellStep($$"""
+Write-Warning 'Deployment failed. If the slot swap already happened, swap back manually:'
+Write-Warning {{YamlBuilder.PsLiteral($"  az webapp deployment slot swap -g $(RESOURCE_GROUP) -n {deployment.WebAppNameOrDefault} --slot staging --target-slot production")}}
+""", "App Service rollback guidance")
             }
         };
     }
+
+    private static string BackupHeader(RollbackConfig config, string environment) => $$"""
+$ErrorActionPreference = 'Stop'
+$envRoot = Join-Path {{YamlBuilder.PsLiteral(config.BackupRootOrDefault)}} {{YamlBuilder.PsLiteral(environment)}}
+$backup = Join-Path $envRoot '$(Build.BuildId)'
+""";
+
+    private static string TargetOrNull(DeploymentConfig deployment) =>
+        string.IsNullOrWhiteSpace(deployment.TargetPath) ? "$null" : YamlBuilder.PsLiteral(deployment.TargetPath);
 }

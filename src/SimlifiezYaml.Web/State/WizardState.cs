@@ -17,7 +17,7 @@ public sealed class WizardState
         Name = "enterprise-pipeline",
         ProjectType = ProjectType.DotNet,
         BuildAgent = BuildAgentType.MicrosoftHosted,
-        DeploymentTarget = DeploymentTarget.Hybrid,
+        DeploymentTarget = DeploymentTarget.OnPrem,
         Environments = new[] { "test", "preprod", "prod" },
         DotNetProjectPath = "**/*.csproj",
         SolutionPath = "**/*Tests*.csproj",
@@ -27,10 +27,11 @@ public sealed class WizardState
             new VariableGroupConfig { Name = "vg-prod-secrets", Scope = VariableGroupScope.Environment, EnvironmentName = "prod", ContainsSecrets = true }
         },
         Artifact = new ArtifactConfig { ArtifactType = ArtifactType.PipelineArtifact, ArtifactName = "drop" },
+        Deployment = new DeploymentConfig { Kind = DeploymentKind.Iis, WebsiteName = "Default Web Site" },
         Rollback = new RollbackConfig { Enabled = true, BackupPath = @"D:\backups", Target = RollbackTarget.Iis, RetentionCount = 5 },
         HealthChecks = new[]
         {
-            new HealthCheckConfig { Enabled = true, HealthCheckType = HealthCheckType.HttpEndpoint, Url = "https://myapp-test.contoso.com/health", ExpectedStatusCode = 200 }
+            new HealthCheckConfig { Enabled = true, HealthCheckType = HealthCheckType.HttpEndpoint, Url = "https://myapp-{environment}.contoso.com/health", ExpectedStatusCode = 200 }
         },
         Notifications = new[]
         {

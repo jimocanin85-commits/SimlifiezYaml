@@ -21,7 +21,7 @@ public sealed class TestStageGenerator : IStageGenerator
             {
                 ["command"] = "test",
                 ["projects"] = definition.SolutionPath ?? "**/*Tests*.csproj",
-                ["arguments"] = "--configuration $(BuildConfiguration) --no-build --collect:\"XPlat Code Coverage\""
+                ["arguments"] = "--configuration $(BuildConfiguration) --collect:\"XPlat Code Coverage\""
             }, "Run unit tests"));
         }
         else

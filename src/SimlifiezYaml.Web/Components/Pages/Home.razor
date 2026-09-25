@@ -58,6 +58,40 @@
                 <InputSelect @bind-Value="Wizard.Definition.DeploymentTarget" class="form-control">
                     @foreach (var d in Enum.GetValues<DeploymentTarget>()) { <option value="@d">@d</option> }
                 </InputSelect>
+                <label>Deploy as</label>
+                <InputSelect @bind-Value="Wizard.Definition.Deployment.Kind" class="form-control">
+                    @foreach (var k in Enum.GetValues<DeploymentKind>()) { <option value="@k">@k</option> }
+                </InputSelect>
+                @switch (Wizard.Definition.Deployment.Kind)
+                {
+                    case DeploymentKind.Iis:
+                        <label>IIS website name</label>
+                        <InputText @bind-Value="Wizard.Definition.Deployment.WebsiteName" class="form-control" placeholder="Default Web Site" />
+                        break;
+                    case DeploymentKind.WindowsService:
+                        <label>Service name</label>
+                        <InputText @bind-Value="Wizard.Definition.Deployment.ServiceName" class="form-control" placeholder="$(SERVICE_NAME)" />
+                        <label>Install folder</label>
+                        <InputText @bind-Value="Wizard.Definition.Deployment.TargetPath" class="form-control" placeholder="$(DEPLOY_PATH)" />
+                        break;
+                    case DeploymentKind.FileShare:
+                        <label>Target folder or share</label>
+                        <InputText @bind-Value="Wizard.Definition.Deployment.TargetPath" class="form-control" placeholder="\\server\share\app" />
+                        break;
+                    case DeploymentKind.AzureAppService:
+                        <label>App Service name</label>
+                        <InputText @bind-Value="Wizard.Definition.Deployment.WebAppName" class="form-control" placeholder="$(WEBAPP_NAME)" />
+                        break;
+                    case DeploymentKind.DockerContainer:
+                        <label>Container name</label>
+                        <InputText @bind-Value="Wizard.Definition.Deployment.ContainerName" class="form-control" placeholder="$(CONTAINER_NAME)" />
+                        break;
+                }
+                <label>Deployment strategy</label>
+                <InputSelect @bind-Value="Wizard.Definition.DeploymentStrategy.StrategyType" class="form-control">
+                    @foreach (var s in Enum.GetValues<DeploymentStrategyType>()) { <option value="@s">@s</option> }
+                </InputSelect>
+                <div class="info-box">Empty fields use pipeline variables (shown as placeholders), which you can define in a variable group.</div>
                 break;
             case WizardStep.IdentityModel:
                 <h2>Identity model</h2>
@@ -92,11 +126,18 @@
                 break;
             case WizardStep.RollbackSettings:
                 <h2>Rollback</h2>
-                <label><input type="checkbox" @bind="Wizard.Definition.Rollback.Enabled" /> Enable rollback</label>
-                <InputSelect @bind-Value="Wizard.Definition.Rollback.Target" class="form-control">
-                    @foreach (var r in Enum.GetValues<RollbackTarget>()) { <option value="@r">@r</option> }
-                </InputSelect>
-                <InputText @bind-Value="Wizard.Definition.Rollback.BackupPath" class="form-control" />
+                <label><input type="checkbox" @bind="Wizard.Definition.Rollback.Enabled" /> Back up before deploying and roll back automatically if the deployment fails</label>
+                @if (Wizard.Definition.Deployment.Kind == DeploymentKind.Custom)
+                {
+                    <label>Rollback target</label>
+                    <InputSelect @bind-Value="Wizard.Definition.Rollback.Target" class="form-control">
+                        @foreach (var r in Enum.GetValues<RollbackTarget>()) { <option value="@r">@r</option> }
+                    </InputSelect>
+                }
+                <label>Backup folder on the target server</label>
+                <InputText @bind-Value="Wizard.Definition.Rollback.BackupPath" class="form-control" placeholder="D:\backups" />
+                <label>Backups to keep per environment</label>
+                <InputNumber @bind-Value="Wizard.Definition.Rollback.RetentionCount" class="form-control" />
                 break;
             case WizardStep.HealthChecks:
                 <h2>Health checks</h2>
@@ -104,7 +145,8 @@
                 <InputSelect @bind-Value="_healthCheck.HealthCheckType" class="form-control">
                     @foreach (var h in Enum.GetValues<HealthCheckType>()) { <option value="@h">@h</option> }
                 </InputSelect>
-                <InputText @bind-Value="_healthCheck.Url" placeholder="https://..." class="form-control" />
+                <InputText @bind-Value="_healthCheck.Url" placeholder="https://myapp-{environment}.contoso.com/health" class="form-control" />
+                <div class="info-box">Use <code>{environment}</code> in the URL to check a different address in each environment.</div>
                 break;
             case WizardStep.Notifications:
                 <h2>Notifications</h2>

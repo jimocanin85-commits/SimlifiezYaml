@@ -27,6 +27,42 @@ public sealed class ArtifactConfig
     public string? DownloadPath { get; set; }
 }
 
+/// <summary>
+/// Where and how the artifact is deployed. Values default to pipeline variables so the generated
+/// YAML never hard-codes server paths; set them here or define the variables in a variable group.
+/// </summary>
+public sealed class DeploymentConfig
+{
+    public DeploymentKind Kind { get; set; } = DeploymentKind.Custom;
+
+    /// <summary>Folder the app is deployed to (IIS site folder, service folder or file share).</summary>
+    public string? TargetPath { get; set; }
+
+    /// <summary>Windows service name (WindowsService).</summary>
+    public string? ServiceName { get; set; }
+
+    /// <summary>IIS website name (Iis).</summary>
+    public string? WebsiteName { get; set; }
+
+    /// <summary>Azure App Service name (AzureAppService).</summary>
+    public string? WebAppName { get; set; }
+
+    /// <summary>Container name (DockerContainer).</summary>
+    public string? ContainerName { get; set; }
+
+    /// <summary>Script run by the Custom deploy step. Defaults to a placeholder.</summary>
+    public string? CustomScript { get; set; }
+
+    public string TargetPathOrDefault => string.IsNullOrWhiteSpace(TargetPath) ? "$(DEPLOY_PATH)" : TargetPath;
+    public string ServiceNameOrDefault => string.IsNullOrWhiteSpace(ServiceName) ? "$(SERVICE_NAME)" : ServiceName;
+    public string WebsiteNameOrDefault => string.IsNullOrWhiteSpace(WebsiteName) ? "Default Web Site" : WebsiteName;
+    public string WebAppNameOrDefault => string.IsNullOrWhiteSpace(WebAppName) ? "$(WEBAPP_NAME)" : WebAppName;
+    public string ContainerNameOrDefault => string.IsNullOrWhiteSpace(ContainerName) ? "$(CONTAINER_NAME)" : ContainerName;
+
+    /// <summary>True for targets that run on servers registered in an Azure DevOps environment.</summary>
+    public bool IsServerDeployment => Kind is DeploymentKind.Iis or DeploymentKind.WindowsService or DeploymentKind.FileShare;
+}
+
 public sealed class RollbackConfig
 {
     public bool Enabled { get; set; }
@@ -34,7 +70,15 @@ public sealed class RollbackConfig
     public string? RollbackScript { get; set; }
     public bool RestorePreviousArtifact { get; set; }
     public int RetentionCount { get; set; } = 3;
+
+    /// <summary>
+    /// Used only when <see cref="DeploymentConfig.Kind"/> is <see cref="DeploymentKind.Custom"/>;
+    /// otherwise the rollback target follows the deployment kind.
+    /// </summary>
     public RollbackTarget Target { get; set; } = RollbackTarget.Iis;
+
+    /// <summary>Root folder for backups. Each environment and build gets its own subfolder.</summary>
+    public string BackupRootOrDefault => string.IsNullOrWhiteSpace(BackupPath) ? @"D:\backups" : BackupPath;
 }
 
 public sealed class HealthCheckConfig

@@ -46,6 +46,49 @@ public sealed class PipelineYamlAssembler
     }
 
     /// <summary>
+    /// Adds the trigger section from a <see cref="TriggerConfig"/>, including branch excludes and path filters.
+    /// </summary>
+    public PipelineYamlAssembler AddTrigger(TriggerConfig trigger)
+    {
+        var include = trigger.TriggerAll || trigger.IncludeBranches.Count == 0
+            ? new[] { "'*'" }
+            : trigger.IncludeBranches.Select(YamlBuilder.YamlString).ToArray();
+
+        _yaml.AppendLine("trigger:");
+        _yaml.AppendLine("  branches:");
+        _yaml.AppendLine("    include:");
+        foreach (var branch in include)
+            _yaml.AppendLine($"      - {branch}");
+        if (trigger.ExcludeBranches.Count > 0)
+        {
+            _yaml.AppendLine("    exclude:");
+            foreach (var branch in trigger.ExcludeBranches)
+                _yaml.AppendLine($"      - {YamlBuilder.YamlString(branch)}");
+        }
+
+        var includePaths = trigger.PathFilters.Where(p => !p.StartsWith('!')).ToList();
+        var excludePaths = trigger.PathFilters.Where(p => p.StartsWith('!')).Select(p => p[1..]).ToList();
+        if (includePaths.Count > 0 || excludePaths.Count > 0)
+        {
+            _yaml.AppendLine("  paths:");
+            if (includePaths.Count > 0)
+            {
+                _yaml.AppendLine("    include:");
+                foreach (var path in includePaths)
+                    _yaml.AppendLine($"      - {YamlBuilder.YamlString(path)}");
+            }
+            if (excludePaths.Count > 0)
+            {
+                _yaml.AppendLine("    exclude:");
+                foreach (var path in excludePaths)
+                    _yaml.AppendLine($"      - {YamlBuilder.YamlString(path)}");
+            }
+        }
+        _yaml.AppendLine();
+        return this;
+    }
+
+    /// <summary>
     /// Adds the variables section if variables are provided.
     /// </summary>
     public PipelineYamlAssembler AddVariables(string? variables)
@@ -59,28 +102,22 @@ public sealed class PipelineYamlAssembler
     }
 
     /// <summary>
+    /// Sets the default agent pool for every job that does not choose its own.
+    /// </summary>
+    public PipelineYamlAssembler AddPool(string poolConfiguration)
+    {
+        _yaml.AppendLine("pool:");
+        _yaml.AppendLine($"  {poolConfiguration}");
+        _yaml.AppendLine();
+        return this;
+    }
+
+    /// <summary>
     /// Marks the beginning of the stages section.
     /// </summary>
     public PipelineYamlAssembler StartStages()
     {
         _yaml.AppendLine("stages:");
-        return this;
-    }
-
-    /// <summary>
-    /// Adds a Key Vault pre-job stage if configured.
-    /// </summary>
-    public PipelineYamlAssembler AddKeyVaultStage(KeyVaultConfig? keyVault, IKeyVaultYamlService keyVaultService)
-    {
-        if (keyVault == null || string.IsNullOrWhiteSpace(keyVault.KeyVaultName))
-            return this;
-
-        _yaml.AppendLine("- stage: KeyVaultPreJob");
-        _yaml.AppendLine("  displayName: 'Load Key Vault secrets'");
-        _yaml.AppendLine("  jobs:");
-        _yaml.AppendLine("  - job: KeyVault");
-        _yaml.AppendLine("    steps:");
-        _yaml.AppendLine(YamlBuilder.Indent(keyVaultService.GeneratePreJobSteps(keyVault), 6));
         return this;
     }
 
@@ -93,57 +130,6 @@ public sealed class PipelineYamlAssembler
         {
             _yaml.AppendLine(stageYaml);
         }
-        return this;
-    }
-
-    /// <summary>
-    /// Adds the Infrastructure as Code stage if configured.
-    /// </summary>
-    public PipelineYamlAssembler AddIacStage(
-        InfrastructureAsCodeConfig? iaC,
-        IIacYamlService iacService,
-        IReadOnlyList<string> environments)
-    {
-        if (iaC == null)
-            return this;
-
-        var env = environments.FirstOrDefault() ?? "test";
-        var steps = string.Join(Environment.NewLine, iacService.GenerateIacSteps(iaC, env));
-        _yaml.AppendLine($$"""
-- stage: Infrastructure
-  displayName: 'Infrastructure as Code'
-  dependsOn: Artifact
-  condition: succeeded()
-  jobs:
-  - job: IaC
-    steps:
-{{YamlBuilder.Indent(steps, 6)}}
-""");
-        return this;
-    }
-
-    /// <summary>
-    /// Adds the Rollback stage if configured.
-    /// </summary>
-    public PipelineYamlAssembler AddRollbackStage(
-        RollbackConfig rollback,
-        IRollbackYamlService rollbackService,
-        IReadOnlyList<string> environments)
-    {
-        if (!rollback.Enabled)
-            return this;
-
-        var lastEnv = environments.LastOrDefault() ?? "prod";
-        _yaml.AppendLine($$"""
-- stage: Rollback
-  displayName: 'Rollback on failure'
-  dependsOn: Deploy_{{YamlBuilder.ToIdentifier(lastEnv)}}
-  condition: failed()
-  jobs:
-  - job: RollbackJob
-    steps:
-{{YamlBuilder.Indent(string.Join(Environment.NewLine, rollbackService.GenerateRollbackSteps(rollback)), 6)}}
-""");
         return this;
     }
 

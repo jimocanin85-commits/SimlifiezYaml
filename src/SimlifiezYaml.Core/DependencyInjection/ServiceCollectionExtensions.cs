@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<INotificationYamlService, NotificationYamlService>();
         services.AddSingleton<IIacYamlService, IacYamlService>();
         services.AddSingleton<IDeploymentStrategyService, DeploymentStrategyService>();
+        services.AddSingleton<IDeploymentStepService, DeploymentStepService>();
         services.AddSingleton<IGovernanceValidationService, GovernanceValidationService>();
         services.AddSingleton<IRepoScannerService, RepoScannerService>();
         services.AddSingleton<IYamlExplanationService, YamlExplanationService>();
