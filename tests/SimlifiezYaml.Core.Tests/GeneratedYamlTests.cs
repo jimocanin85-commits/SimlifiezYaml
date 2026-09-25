@@ -112,8 +112,8 @@ public class GeneratedYamlTests
 
         var preProd = Assert.Single(stages, s => (string)s["stage"] == "Deploy_pre_prod");
         var job = Assert.Single(JobsOf(preProd));
-        Assert.Equal("pre-prod", job["environment"]);
-        Assert.Equal("DeployTopre_prod", job["deployment"]);
+        Assert.Equal("pre-prod", (string)job["environment"]);
+        Assert.Equal("DeployTopre_prod", (string)job["deployment"]);
     }
 
     [Fact]
@@ -123,12 +123,12 @@ public class GeneratedYamlTests
         var stages = StagesOf(Parse(yaml));
 
         var success = Assert.Single(stages, s => (string)s["stage"] == "Notify_Success");
-        Assert.Equal("succeeded()", success["condition"]);
+        Assert.Equal("succeeded()", (string)success["condition"]);
         Assert.Contains("succeeded", string.Join("\n", PowerShellScripts(success)));
         Assert.DoesNotContain(" failed", string.Join("\n", PowerShellScripts(success)));
 
         var failure = Assert.Single(stages, s => (string)s["stage"] == "Notify_Failure");
-        Assert.Equal("failed()", failure["condition"]);
+        Assert.Equal("failed()", (string)failure["condition"]);
         var failureDependencies = DependenciesOf(failure).ToList();
         Assert.Contains("Build", failureDependencies);
         Assert.Contains("Deploy_prod", failureDependencies);
@@ -144,8 +144,8 @@ public class GeneratedYamlTests
         var tasks = StepsOf(job).Select(s => s.GetValueOrDefault("task") as string).ToList();
 
         Assert.Equal(new[] { "DotNetCoreCLI@2", "PublishPipelineArtifact@1" }, tasks);
-        Assert.Equal("publish", Inputs(StepsOf(job)[0])["command"]);
-        Assert.Equal("$(Build.ArtifactStagingDirectory)/app", Inputs(StepsOf(job)[1])["targetPath"]);
+        Assert.Equal("publish", (string)Inputs(StepsOf(job)[0])["command"]);
+        Assert.Equal("$(Build.ArtifactStagingDirectory)/app", (string)Inputs(StepsOf(job)[1])["targetPath"]);
         Assert.True(job.ContainsKey("pool"));
     }
 
@@ -154,7 +154,7 @@ public class GeneratedYamlTests
     {
         var yaml = _generator.Generate(FullDefinition()).Yaml;
         var job = Assert.Single(JobsOf(StageNamed(Parse(yaml), "Test")));
-        var arguments = Inputs(StepsOf(job).Single())["arguments"];
+        var arguments = (string)Inputs(StepsOf(job).Single())["arguments"];
         Assert.DoesNotContain("--no-build", arguments);
     }
 
@@ -186,7 +186,7 @@ public class GeneratedYamlTests
             Assert.Equal("Infrastructure", Assert.Single(DependenciesOf(DeployJob(stage))));
 
             var steps = DeploySteps(infra);
-            Assert.Equal("self", steps[0]["checkout"]);
+            Assert.Equal("self", (string)steps[0]["checkout"]);
             Assert.Contains(steps, s => s.GetValueOrDefault("task") as string == "TerraformTaskV4@4"
                                         && (string)Inputs(s)["command"] == "apply");
         }
@@ -203,13 +203,13 @@ public class GeneratedYamlTests
         var job = DeployJob(StageNamed(root, "Deploy_prod"));
 
         var environment = Assert.IsType<Dictionary<object, object>>(job["environment"]);
-        Assert.Equal("prod", environment["name"]);
-        Assert.Equal("VirtualMachine", environment["resourceType"]);
+        Assert.Equal("prod", (string)environment["name"]);
+        Assert.Equal("VirtualMachine", (string)environment["resourceType"]);
 
         var steps = DeploySteps(job);
         var deploy = Assert.Single(steps, s => s.GetValueOrDefault("task") as string == "IISWebAppDeploymentOnMachineGroup@0");
-        Assert.Equal("MyApp", Inputs(deploy)["WebSiteName"]);
-        Assert.Equal("$(Pipeline.Workspace)/drop", Inputs(deploy)["Package"]);
+        Assert.Equal("MyApp", (string)Inputs(deploy)["WebSiteName"]);
+        Assert.Equal("$(Pipeline.Workspace)/drop", (string)Inputs(deploy)["Package"]);
 
         var backupIndex = steps.FindIndex(s => (s.GetValueOrDefault("displayName") as string ?? "").StartsWith("Back up"));
         Assert.InRange(backupIndex, 0, steps.IndexOf(deploy) - 1);
@@ -229,7 +229,7 @@ public class GeneratedYamlTests
 
         var job = DeployJob(StageNamed(Parse(_generator.Generate(definition).Yaml), "Deploy_prod"));
         var rolling = Assert.IsType<Dictionary<object, object>>(Strategy(job)["rolling"]);
-        Assert.Equal("2", rolling["maxParallel"]);
+        Assert.Equal("2", (string)rolling["maxParallel"]);
     }
 
     [Fact]
@@ -274,7 +274,7 @@ public class GeneratedYamlTests
     {
         var root = Parse(_generator.Generate(FullDefinition()).Yaml);
         var pool = Assert.IsType<Dictionary<object, object>>(root["pool"]);
-        Assert.Equal("windows-latest", pool["vmImage"]);
+        Assert.Equal("windows-latest", (string)pool["vmImage"]);
     }
 
     private static Dictionary<object, object> StageNamed(Dictionary<object, object> root, string name) =>
