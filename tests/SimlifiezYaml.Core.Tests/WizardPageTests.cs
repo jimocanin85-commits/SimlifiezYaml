@@ -16,7 +16,7 @@ public class WizardPageTests : TestContext
     {
         Services.AddSimlifiezYamlCore();
         Services.AddScoped<WizardState>();
-        JSInterop.SetupVoid("simlifiezYaml.downloadText", _ => true);
+        JSInterop.SetupVoid("simlifiezYaml.downloadText", _ => true).SetVoidResult();
         JSInterop.Setup<bool>("simlifiezYaml.copyText", _ => true).SetResult(true);
     }
 
