@@ -37,10 +37,10 @@ Write-Host 'Windows Service backup completed'
             },
             RollbackTarget.FileShare => new[]
             {
-                YamlBuilder.PowerShellStep($"""
-$backupRoot = {YamlBuilder.PsLiteral(backupPath)}
+                YamlBuilder.PowerShellStep($$"""
+$backupRoot = {{YamlBuilder.PsLiteral(backupPath)}}
 robocopy '\\fileserver\deploy' $backupRoot /MIR /R:2 /W:5
-if ($LASTEXITCODE -ge 8) {{ throw 'File share backup failed' }}
+if ($LASTEXITCODE -ge 8) { throw 'File share backup failed' }
 """, "Backup file share deployment")
             },
             RollbackTarget.AzureAppServiceSlot => new[]
@@ -76,10 +76,10 @@ Write-Host 'Docker image tagged for rollback'
         {
             RollbackTarget.Iis => new[]
             {
-                YamlBuilder.PowerShellStep($"""
-$backupRoot = {YamlBuilder.PsLiteral(config.BackupPath ?? "D:\\backups")}
+                YamlBuilder.PowerShellStep($$"""
+$backupRoot = {{YamlBuilder.PsLiteral(config.BackupPath ?? "D:\\backups")}}
 $latest = Get-ChildItem $backupRoot | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $latest) {{ throw 'No backup found for rollback' }}
+if (-not $latest) { throw 'No backup found for rollback' }
 Copy-Item -Path $latest.FullName -Destination 'C:\inetpub\wwwroot' -Recurse -Force
 Write-Host 'IIS rollback completed'
 """, "Rollback IIS deployment")
