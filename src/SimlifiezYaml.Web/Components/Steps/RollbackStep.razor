@@ -1,0 +1,24 @@
+@inject WizardState Wizard
+
+<h2>Rollback</h2>
+<label><InputCheckbox @bind-Value="Wizard.Definition.Rollback.Enabled" /> Back up before deploying and roll back automatically if the deployment fails</label>
+@if (Wizard.Definition.Rollback.Enabled)
+{
+    if (Wizard.Definition.Deployment.Kind == DeploymentKind.Custom)
+    {
+        <label for="rollback-target">Rollback target</label>
+        <InputSelect id="rollback-target" @bind-Value="Wizard.Definition.Rollback.Target" class="form-control">
+            @foreach (var r in Enum.GetValues<RollbackTarget>())
+            {
+                <option value="@r">@r</option>
+            }
+        </InputSelect>
+    }
+    <label for="backup-path">Backup folder on the target server</label>
+    <InputText id="backup-path" @bind-Value="Wizard.Definition.Rollback.BackupPath" class="form-control" placeholder="D:\backups" />
+    <label for="retention">Backups to keep per environment</label>
+    <InputNumber id="retention" @bind-Value="Wizard.Definition.Rollback.RetentionCount" class="form-control" />
+    <label for="rollback-script">Custom rollback script (optional, replaces the built-in rollback)</label>
+    <InputText id="rollback-script" @bind-Value="Wizard.Definition.Rollback.RollbackScript" class="form-control" placeholder="scripts/rollback.cmd" />
+    <label><InputCheckbox @bind-Value="Wizard.Definition.DeploymentStrategy.RollbackOnFailure" /> Run the rollback when a deployment fails</label>
+}

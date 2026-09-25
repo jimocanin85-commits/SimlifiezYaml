@@ -32,6 +32,70 @@ public sealed class TemplateMarketplaceService : ITemplateMarketplaceService
     public PipelineTemplate? GetById(string id) =>
         Templates.FirstOrDefault(t => t.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
+    public bool ApplyTo(string templateId, PipelineDefinition definition)
+    {
+        var template = GetById(templateId);
+        if (template == null)
+            return false;
+
+        definition.TemplateId = template.Id;
+        definition.DeploymentTarget = template.SupportedTargets.FirstOrDefault();
+
+        // Environments come from the template's Deploy_* stages, e.g. Deploy_test -> test.
+        var environments = template.GeneratedStages
+            .Where(s => s.StartsWith("Deploy_", StringComparison.Ordinal))
+            .Select(s => s["Deploy_".Length..])
+            .ToList();
+        if (environments.Count > 0)
+            definition.Environments = environments;
+
+        switch (template.Id)
+        {
+            case "dotnet-web-app":
+                definition.ProjectType = ProjectType.DotNet;
+                definition.Artifact.ArtifactType = ArtifactType.PipelineArtifact;
+                definition.Deployment.Kind = DeploymentKind.AzureAppService;
+                definition.DeploymentStrategy.StrategyType = DeploymentStrategyType.Standard;
+                break;
+            case "iis-onprem":
+                definition.ProjectType = ProjectType.DotNet;
+                definition.Artifact.ArtifactType = ArtifactType.PipelineArtifact;
+                definition.Deployment.Kind = DeploymentKind.Iis;
+                definition.Rollback.Enabled = true;
+                break;
+            case "docker-build-push":
+                definition.ProjectType = ProjectType.Docker;
+                definition.Artifact.ArtifactType = ArtifactType.DockerImage;
+                definition.Deployment.Kind = DeploymentKind.DockerContainer;
+                break;
+            case "terraform-azure":
+                definition.ProjectType = ProjectType.Terraform;
+                definition.IaC ??= new InfrastructureAsCodeConfig { Tool = IaCTool.Terraform, WorkingDirectory = "infra" };
+                definition.IaC.ServiceConnection = definition.AzureServiceConnection;
+                definition.Deployment.Kind = DeploymentKind.Custom;
+                break;
+            case "winrm-deploy":
+                // Deploys through agents registered in the environment rather than remote WinRM calls.
+                definition.ProjectType = ProjectType.DotNet;
+                definition.Deployment.Kind = DeploymentKind.WindowsService;
+                definition.Rollback.Enabled = true;
+                break;
+            case "aks-deploy":
+                definition.ProjectType = ProjectType.Docker;
+                definition.Artifact.ArtifactType = ArtifactType.DockerImage;
+                definition.Deployment.Kind = DeploymentKind.Custom;
+                definition.Deployment.CustomScript ??= "kubectl apply -f manifests/ --namespace $(K8S_NAMESPACE)";
+                break;
+            case "hybrid-dotnet-docker":
+                definition.ProjectType = ProjectType.DotNet;
+                definition.Artifact.ArtifactType = ArtifactType.DockerImage;
+                definition.Deployment.Kind = DeploymentKind.DockerContainer;
+                break;
+        }
+
+        return true;
+    }
+
     private static PipelineTemplate T(
         string id, string name, TemplateCategory category, string description,
         DeploymentTarget target, string[] inputs, string[] stages,

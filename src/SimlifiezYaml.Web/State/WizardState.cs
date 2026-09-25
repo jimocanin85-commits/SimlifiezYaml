@@ -1,16 +1,158 @@
+using SimlifiezYaml.Core.Abstractions;
 using SimlifiezYaml.Core.Enums;
 using SimlifiezYaml.Core.Models;
 
 namespace SimlifiezYaml.Web.State;
 
+/// <summary>
+/// Everything the wizard edits. Step components bind straight to <see cref="Definition"/> (or to
+/// the helper properties here), so nothing is lost when jumping between steps.
+/// </summary>
 public sealed class WizardState
 {
+    private KeyVaultConfig _keyVault = new();
+    private InfrastructureAsCodeConfig _iac = new() { WorkingDirectory = "infra" };
+    private AgentDiagnosticConfig _agentDiagnostics = new();
+
+    public WizardState()
+    {
+        Definition = CreateDefault();
+        VariableGroups = Definition.VariableGroups.ToList();
+        HealthChecks = Definition.HealthChecks.ToList();
+        Notifications = Definition.Notifications.ToList();
+        Definition.VariableGroups = VariableGroups;
+        Definition.HealthChecks = HealthChecks;
+        Definition.Notifications = Notifications;
+        if (Definition.AgentDiagnostics != null) _agentDiagnostics = Definition.AgentDiagnostics;
+    }
+
     public WizardStep CurrentStep { get; set; } = WizardStep.ProjectType;
-    public PipelineDefinition Definition { get; set; } = CreateDefault();
-    public GeneratedPipeline? Result { get; set; }
-    public PipelineDependencyGraph? DependencyGraph { get; set; }
+    public PipelineDefinition Definition { get; }
+
+    // Editable lists; the same instances are assigned to Definition.
+    public List<VariableGroupConfig> VariableGroups { get; }
+    public List<HealthCheckConfig> HealthChecks { get; }
+    public List<NotificationConfig> Notifications { get; }
+
+    public GeneratedPipeline? Result { get; private set; }
+    public string? GenerationError { get; private set; }
     public RepoScanResult? ScanResult { get; set; }
-    public string RepoPathsInput { get; set; } = "src/MyApp.csproj\nDockerfile\ntests/MyApp.Tests.csproj";
+    public string RepoPathsInput { get; set; } = "src/MyApp/MyApp.csproj\nDockerfile\ntests/MyApp.Tests/MyApp.Tests.csproj";
+
+    public PipelineDependencyGraph DependencyGraph => PipelineDependencyGraph.FromDefinition(Definition);
+
+    public string EnvironmentsCsv
+    {
+        get => string.Join(", ", Definition.Environments);
+        set => Definition.Environments = SplitList(value);
+    }
+
+    public string IncludeBranches
+    {
+        get => string.Join(", ", Definition.Trigger.IncludeBranches);
+        set => Definition.Trigger.IncludeBranches = SplitList(value);
+    }
+
+    public string ExcludeBranches
+    {
+        get => string.Join(", ", Definition.Trigger.ExcludeBranches);
+        set => Definition.Trigger.ExcludeBranches = SplitList(value);
+    }
+
+    public string PathFilters
+    {
+        get => string.Join(", ", Definition.Trigger.PathFilters);
+        set => Definition.Trigger.PathFilters = SplitList(value);
+    }
+
+    public string RequiredVariableGroups
+    {
+        get => string.Join(", ", Definition.Governance.RequiredVariableGroups);
+        set => Definition.Governance.RequiredVariableGroups = SplitList(value);
+    }
+
+    public string ForbiddenTasks
+    {
+        get => string.Join(", ", Definition.Governance.ForbiddenTasks);
+        set => Definition.Governance.ForbiddenTasks = SplitList(value);
+    }
+
+    public string RequiredTasks
+    {
+        get => string.Join(", ", Definition.Governance.RequiredTasks);
+        set => Definition.Governance.RequiredTasks = SplitList(value);
+    }
+
+    public string DeploymentFolders
+    {
+        get => string.Join("\n", _agentDiagnostics.DeploymentFolders);
+        set => _agentDiagnostics.DeploymentFolders = SplitLines(value);
+    }
+
+    public AgentDiagnosticConfig AgentDiagnostics => _agentDiagnostics;
+    public KeyVaultConfig KeyVault => _keyVault;
+    public InfrastructureAsCodeConfig IaC => _iac;
+
+    public bool KeyVaultEnabled
+    {
+        get => Definition.KeyVault != null;
+        set => Definition.KeyVault = value ? _keyVault : null;
+    }
+
+    public bool IaCEnabled
+    {
+        get => Definition.IaC != null;
+        set => Definition.IaC = value ? _iac : null;
+    }
+
+    public bool AgentDiagnosticsEnabled
+    {
+        get => Definition.AgentDiagnostics != null;
+        set => Definition.AgentDiagnostics = value ? _agentDiagnostics : null;
+    }
+
+    /// <summary>Sets the Azure service connection everywhere it is used.</summary>
+    public string AzureServiceConnection
+    {
+        get => Definition.AzureServiceConnection;
+        set
+        {
+            var connection = string.IsNullOrWhiteSpace(value) ? "$(AZURE_SERVICE_CONNECTION)" : value.Trim();
+            Definition.AzureServiceConnection = connection;
+            _keyVault.ServiceConnection = connection;
+            _iac.ServiceConnection = connection;
+        }
+    }
+
+    public void Generate(IPipelineGeneratorService generator)
+    {
+        try
+        {
+            Result = generator.Generate(Definition);
+            GenerationError = null;
+        }
+        catch (ArgumentException ex)
+        {
+            // Invalid input: show the validation errors instead of crashing the page.
+            Result = null;
+            GenerationError = ex.Message;
+        }
+    }
+
+    public void ScanRepository(IRepoScannerService scanner)
+    {
+        ScanResult = scanner.ScanFileList(SplitLines(RepoPathsInput));
+        if (ScanResult.ProjectType != ProjectType.Unknown)
+            Definition.ProjectType = ScanResult.ProjectType;
+    }
+
+    public bool ApplyTemplate(ITemplateMarketplaceService marketplace, string templateId)
+    {
+        var applied = marketplace.ApplyTo(templateId, Definition);
+        if (applied && Definition.IaC != null)
+            _iac = Definition.IaC;
+        return applied;
+    }
 
     public static PipelineDefinition CreateDefault() => new()
     {
@@ -52,4 +194,10 @@ public sealed class WizardState
             DeploymentFolders = new[] { @"D:\deploy", @"C:\inetpub\wwwroot" }
         }
     };
+
+    private static IReadOnlyList<string> SplitList(string? value) =>
+        (value ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static IReadOnlyList<string> SplitLines(string? value) =>
+        (value ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

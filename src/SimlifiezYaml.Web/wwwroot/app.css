@@ -39,3 +39,19 @@ body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; background: va
 .template-list li { margin-bottom: 0.5rem; }
 .dep-graph { font-size: 0.9rem; color: var(--muted); }
 .dep-graph li { margin-bottom: 0.35rem; }
+
+.hint { color: var(--muted); font-size: 0.85rem; margin: -0.5rem 0 1rem; }
+label { display: block; margin-top: 0.5rem; }
+.card label { margin-right: 0.75rem; }
+.card.row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.card.row label { display: inline-block; margin: 0; }
+.card input, .card select { background: var(--bg); border: 1px solid #2a3a4f; color: var(--text); border-radius: 4px; padding: 0.35rem; }
+.btn-secondary { padding: 0.4rem 0.8rem; background: transparent; color: var(--text); border: 1px solid var(--accent); border-radius: 4px; cursor: pointer; margin: 0.25rem 0.5rem 0.25rem 0; }
+.btn-link { background: none; border: none; color: var(--muted); text-decoration: underline; cursor: pointer; }
+.tag { display: inline-block; font-size: 0.75rem; padding: 0.05rem 0.4rem; margin-left: 0.35rem; border-radius: 3px; background: #1e3a5f; }
+.template-list li.suggested strong { color: var(--accent); }
+.actions { margin: 1rem 0; }
+.status { color: var(--info); }
+.generation-error pre { white-space: pre-wrap; }
+.validation-list li { margin-bottom: 0.5rem; }
+h3 { margin-top: 1.5rem; }

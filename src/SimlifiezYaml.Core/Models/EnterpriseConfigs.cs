@@ -25,6 +25,9 @@ public sealed class ArtifactConfig
     public string? PackagePath { get; set; }
     public string? PublishPath { get; set; }
     public string? DownloadPath { get; set; }
+
+    /// <summary>Docker registry service connection used to push images.</summary>
+    public string ContainerRegistryConnection { get; set; } = "$(DOCKER_SERVICE_CONNECTION)";
 }
 
 /// <summary>

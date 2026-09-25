@@ -1,0 +1,153 @@
+using Bunit;
+using Microsoft.Extensions.DependencyInjection;
+using SimlifiezYaml.Core.DependencyInjection;
+using SimlifiezYaml.Core.Enums;
+using SimlifiezYaml.Web.Components.Pages;
+using SimlifiezYaml.Web.Components.Steps;
+using SimlifiezYaml.Web.State;
+using Xunit;
+
+namespace SimlifiezYaml.Core.Tests;
+
+/// <summary>Renders the wizard with bUnit and drives it like a user would.</summary>
+public class WizardPageTests : TestContext
+{
+    public WizardPageTests()
+    {
+        Services.AddSimlifiezYamlCore();
+        Services.AddScoped<WizardState>();
+        JSInterop.SetupVoid("simlifiezYaml.downloadText", _ => true);
+        JSInterop.Setup<bool>("simlifiezYaml.copyText", _ => true).SetResult(true);
+    }
+
+    public static IEnumerable<object[]> AllSteps() => Enum.GetValues<WizardStep>().Select(s => new object[] { s });
+
+    [Theory]
+    [MemberData(nameof(AllSteps))]
+    public void EveryStepRendersWithoutErrors(WizardStep step)
+    {
+        var cut = RenderComponent<Home>();
+
+        GoTo(cut, step);
+
+        Assert.NotEmpty(cut.Find(".wizard-content h2").TextContent);
+        Assert.Contains("active", cut.Find($"button[data-step='{step}']").ClassList);
+        Assert.DoesNotContain("generation-error", cut.Markup);
+    }
+
+    [Fact]
+    public void DownloadButtonSendsTheYamlToTheBrowser()
+    {
+        var cut = RenderComponent<Home>();
+        GoTo(cut, WizardStep.DownloadExport);
+
+        cut.Find("#download-yaml").Click();
+
+        var invocation = JSInterop.VerifyInvoke("simlifiezYaml.downloadText");
+        Assert.Equal(ExportStep.PipelineFileName, invocation.Arguments[0]);
+        Assert.Contains("stages:", (string)invocation.Arguments[1]!);
+        Assert.Contains("Downloaded azure-pipelines.yml", cut.Find("[role=status]").TextContent);
+    }
+
+    [Fact]
+    public void DiagnosticsScriptCanBeDownloaded()
+    {
+        var cut = RenderComponent<Home>();
+        GoTo(cut, WizardStep.DownloadExport);
+
+        cut.Find("#download-diagnostics").Click();
+
+        var invocation = JSInterop.VerifyInvoke("simlifiezYaml.downloadText");
+        Assert.Equal(ExportStep.DiagnosticsFileName, invocation.Arguments[0]);
+        Assert.Contains("Test-Path", (string)invocation.Arguments[1]!);
+    }
+
+    [Fact]
+    public void CopyButtonUsesTheClipboard()
+    {
+        var cut = RenderComponent<Home>();
+        GoTo(cut, WizardStep.DownloadExport);
+
+        cut.Find("#copy-yaml").Click();
+
+        JSInterop.VerifyInvoke("simlifiezYaml.copyText");
+        Assert.Contains("copied", cut.Find("[role=status]").TextContent);
+    }
+
+    [Fact]
+    public void EditsSurviveJumpingBetweenStepsAndReachTheYaml()
+    {
+        var cut = RenderComponent<Home>();
+        cut.Find("#pipeline-name").Change("orders-api");
+
+        GoTo(cut, WizardStep.EnvironmentSelection);
+        cut.Find("#environments").Change("dev, prod");
+        GoTo(cut, WizardStep.ProjectType);
+        Assert.Equal("orders-api", cut.Find("#pipeline-name").GetAttribute("value"));
+
+        GoTo(cut, WizardStep.YamlPreview);
+        var yaml = cut.Find(".yaml-preview").TextContent;
+        Assert.Contains("# Pipeline: orders-api", yaml);
+        Assert.Contains("- stage: Deploy_dev", yaml);
+        Assert.DoesNotContain("Deploy_preprod", yaml);
+    }
+
+    [Fact]
+    public void KeyVaultCanBeTurnedOnAndOff()
+    {
+        var cut = RenderComponent<Home>();
+        GoTo(cut, WizardStep.VariableGroupsAndKeyVault);
+
+        cut.Find("input[type=checkbox]:not(.card input)").Change(true); // first checkbox outside the group cards is Key Vault
+        cut.Find("#kv-name").Change("kv-orders");
+        GoTo(cut, WizardStep.YamlPreview);
+        Assert.Contains("AzureKeyVault@2", cut.Find(".yaml-preview").TextContent);
+
+        GoTo(cut, WizardStep.VariableGroupsAndKeyVault);
+        cut.Find("input[type=checkbox]:not(.card input)").Change(false);
+        GoTo(cut, WizardStep.YamlPreview);
+        Assert.DoesNotContain("AzureKeyVault@2", cut.Find(".yaml-preview").TextContent);
+    }
+
+    [Fact]
+    public void ApplyingATemplateChangesTheGeneratedPipeline()
+    {
+        var cut = RenderComponent<Home>();
+        GoTo(cut, WizardStep.PipelineTemplate);
+
+        cut.Find("button[data-template='dotnet-web-app']").Click();
+        Assert.Contains("Template applied", cut.Markup);
+
+        GoTo(cut, WizardStep.YamlPreview);
+        var yaml = cut.Find(".yaml-preview").TextContent;
+        Assert.Contains("AzureWebApp@1", yaml);
+        Assert.DoesNotContain("IISWebAppDeploymentOnMachineGroup@0", yaml);
+    }
+
+    [Fact]
+    public void RepositoryScanDetectsTheProject()
+    {
+        var cut = RenderComponent<Home>();
+        GoTo(cut, WizardStep.PipelineTemplate);
+
+        cut.Find("textarea").Change("main.tf\nmodules/network/main.tf");
+        cut.Find("button.btn-secondary").Click(); // Scan
+
+        Assert.Contains("Terraform", cut.Find(".scan-result").TextContent);
+    }
+
+    [Fact]
+    public void InvalidSettingsShowErrorsInsteadOfCrashing()
+    {
+        var cut = RenderComponent<Home>();
+        GoTo(cut, WizardStep.EnvironmentSelection);
+        cut.Find("#environments").Change("Bad Name");
+
+        GoTo(cut, WizardStep.YamlPreview);
+
+        Assert.Contains("invalid characters", cut.Find(".generation-error").TextContent);
+    }
+
+    private static void GoTo(IRenderedComponent<Home> cut, WizardStep step) =>
+        cut.Find($"button[data-step='{step}']").Click();
+}

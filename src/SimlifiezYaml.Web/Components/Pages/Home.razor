@@ -2,309 +2,90 @@
 @rendermode InteractiveServer
 @inject WizardState Wizard
 @inject IPipelineGeneratorService Generator
-@inject IRepoScannerService RepoScanner
-@inject ITemplateMarketplaceService Marketplace
-@inject IEnvironmentYamlService EnvironmentService
+
+<PageTitle>SimlifiezYaml - Pipeline Builder</PageTitle>
 
 <div class="wizard">
-    <nav class="wizard-nav">
-        @foreach (WizardStep step in Enum.GetValues<WizardStep>())
+    <nav class="wizard-nav" aria-label="Wizard steps">
+        @foreach (var step in Enum.GetValues<WizardStep>())
         {
-            <button class="step-btn @(Wizard.CurrentStep == step ? "active" : "")"
+            <button type="button" class="step-btn @(Wizard.CurrentStep == step ? "active" : "")"
+                    data-step="@step" aria-current="@(Wizard.CurrentStep == step ? "step" : null)"
                     @onclick="() => GoTo(step)">
-                @((int)step). @GetStepTitle(step)
+                @((int)step). @StepTitles.For(step)
             </button>
         }
     </nav>
 
     <section class="wizard-content">
-        @* Input* components need a cascading EditContext, so the step content lives in an EditForm. *@
+        @* Input* components need a cascading EditContext, so every step renders inside this form. *@
         <EditForm Model="Wizard.Definition">
-        @switch (Wizard.CurrentStep)
-        {
-            case WizardStep.ProjectType:
-                <h2>Project type</h2>
-                <InputSelect @bind-Value="Wizard.Definition.ProjectType" class="form-control">
-                    @foreach (var pt in Enum.GetValues<ProjectType>()) { <option value="@pt">@pt</option> }
-                </InputSelect>
-                <label>Project path</label>
-                <InputText @bind-Value="Wizard.Definition.DotNetProjectPath" class="form-control" />
-                break;
-            case WizardStep.BuildAgent:
-                <h2>Build agent</h2>
-                <InputSelect @bind-Value="Wizard.Definition.BuildAgent" class="form-control">
-                    @foreach (var a in Enum.GetValues<BuildAgentType>()) { <option value="@a">@a</option> }
-                </InputSelect>
-                <label>Self-hosted pool name</label>
-                <InputText @bind-Value="Wizard.Definition.PoolName" class="form-control" placeholder="Default" />
-                break;
-            case WizardStep.PipelineTemplate:
-                <h2>Pipeline template</h2>
-                <ul class="template-list">
-                    @foreach (var t in Marketplace.GetAllTemplates())
-                    {
-                        <li><strong>@t.Name</strong> — @t.Description <em>(@t.RiskLevel risk)</em></li>
-                    }
-                </ul>
-                break;
-            case WizardStep.EnvironmentSelection:
-                <h2>Environments</h2>
-                <p>Comma-separated: test, preprod, prod</p>
-                <InputText @bind-Value="_environmentsCsv" class="form-control" />
-                <div class="info-box">@EnvironmentService.GetApprovalUiNote()</div>
-                break;
-            case WizardStep.DeploymentTarget:
-                <h2>Deployment target</h2>
-                <InputSelect @bind-Value="Wizard.Definition.DeploymentTarget" class="form-control">
-                    @foreach (var d in Enum.GetValues<DeploymentTarget>()) { <option value="@d">@d</option> }
-                </InputSelect>
-                <label>Deploy as</label>
-                <InputSelect @bind-Value="Wizard.Definition.Deployment.Kind" class="form-control">
-                    @foreach (var k in Enum.GetValues<DeploymentKind>()) { <option value="@k">@k</option> }
-                </InputSelect>
-                @switch (Wizard.Definition.Deployment.Kind)
-                {
-                    case DeploymentKind.Iis:
-                        <label>IIS website name</label>
-                        <InputText @bind-Value="Wizard.Definition.Deployment.WebsiteName" class="form-control" placeholder="Default Web Site" />
-                        break;
-                    case DeploymentKind.WindowsService:
-                        <label>Service name</label>
-                        <InputText @bind-Value="Wizard.Definition.Deployment.ServiceName" class="form-control" placeholder="$(SERVICE_NAME)" />
-                        <label>Install folder</label>
-                        <InputText @bind-Value="Wizard.Definition.Deployment.TargetPath" class="form-control" placeholder="$(DEPLOY_PATH)" />
-                        break;
-                    case DeploymentKind.FileShare:
-                        <label>Target folder or share</label>
-                        <InputText @bind-Value="Wizard.Definition.Deployment.TargetPath" class="form-control" placeholder="\\server\share\app" />
-                        break;
-                    case DeploymentKind.AzureAppService:
-                        <label>App Service name</label>
-                        <InputText @bind-Value="Wizard.Definition.Deployment.WebAppName" class="form-control" placeholder="$(WEBAPP_NAME)" />
-                        break;
-                    case DeploymentKind.DockerContainer:
-                        <label>Container name</label>
-                        <InputText @bind-Value="Wizard.Definition.Deployment.ContainerName" class="form-control" placeholder="$(CONTAINER_NAME)" />
-                        break;
-                }
-                <label>Deployment strategy</label>
-                <InputSelect @bind-Value="Wizard.Definition.DeploymentStrategy.StrategyType" class="form-control">
-                    @foreach (var s in Enum.GetValues<DeploymentStrategyType>()) { <option value="@s">@s</option> }
-                </InputSelect>
-                <div class="info-box">Empty fields use pipeline variables (shown as placeholders), which you can define in a variable group.</div>
-                break;
-            case WizardStep.IdentityModel:
-                <h2>Identity model</h2>
-                <p>Configure gMSA, service accounts, and WinRM credentials via variable groups and Key Vault (steps 7).</p>
-                break;
-            case WizardStep.VariableGroupsAndKeyVault:
-                <h2>Variable groups &amp; Key Vault</h2>
-                @for (var i = 0; i < _variableGroups.Count; i++)
-                {
-                    var idx = i;
-                    <div class="card">
-                        <InputText @bind-Value="_variableGroups[idx].Name" placeholder="vg-test" />
-                        <InputSelect @bind-Value="_variableGroups[idx].Scope">
-                            @foreach (var s in Enum.GetValues<VariableGroupScope>()) { <option value="@s">@s</option> }
-                        </InputSelect>
-                    </div>
-                }
-                <button type="button" @onclick="AddVariableGroup">Add variable group</button>
-                <h3>Azure Key Vault</h3>
-                <label><input type="checkbox" @bind="_useKeyVault" /> Enable Key Vault pre-job</label>
-                @if (_useKeyVault)
-                {
-                    <InputText @bind-Value="_keyVaultName" placeholder="my-keyvault" class="form-control" />
-                }
-                break;
-            case WizardStep.ArtifactSettings:
-                <h2>Artifact settings</h2>
-                <InputSelect @bind-Value="Wizard.Definition.Artifact.ArtifactType" class="form-control">
-                    @foreach (var a in Enum.GetValues<ArtifactType>()) { <option value="@a">@a</option> }
-                </InputSelect>
-                <InputText @bind-Value="Wizard.Definition.Artifact.ArtifactName" class="form-control" />
-                break;
-            case WizardStep.RollbackSettings:
-                <h2>Rollback</h2>
-                <label><input type="checkbox" @bind="Wizard.Definition.Rollback.Enabled" /> Back up before deploying and roll back automatically if the deployment fails</label>
-                @if (Wizard.Definition.Deployment.Kind == DeploymentKind.Custom)
-                {
-                    <label>Rollback target</label>
-                    <InputSelect @bind-Value="Wizard.Definition.Rollback.Target" class="form-control">
-                        @foreach (var r in Enum.GetValues<RollbackTarget>()) { <option value="@r">@r</option> }
-                    </InputSelect>
-                }
-                <label>Backup folder on the target server</label>
-                <InputText @bind-Value="Wizard.Definition.Rollback.BackupPath" class="form-control" placeholder="D:\backups" />
-                <label>Backups to keep per environment</label>
-                <InputNumber @bind-Value="Wizard.Definition.Rollback.RetentionCount" class="form-control" />
-                break;
-            case WizardStep.HealthChecks:
-                <h2>Health checks</h2>
-                <label><input type="checkbox" @bind="_healthCheck.Enabled" /> Enable health check</label>
-                <InputSelect @bind-Value="_healthCheck.HealthCheckType" class="form-control">
-                    @foreach (var h in Enum.GetValues<HealthCheckType>()) { <option value="@h">@h</option> }
-                </InputSelect>
-                <InputText @bind-Value="_healthCheck.Url" placeholder="https://myapp-{environment}.contoso.com/health" class="form-control" />
-                <div class="info-box">Use <code>{environment}</code> in the URL to check a different address in each environment.</div>
-                break;
-            case WizardStep.Notifications:
-                <h2>Notifications</h2>
-                <p>Webhook URLs use pipeline variables — never stored in YAML.</p>
-                <InputText @bind-Value="_teamsVar" placeholder="TEAMS_WEBHOOK_URL" class="form-control" />
-                break;
-            case WizardStep.GovernancePolicies:
-                <h2>Governance</h2>
-                <label><input type="checkbox" @bind="Wizard.Definition.Governance.RequiredApprovals" /> Require approvals</label>
-                <label><input type="checkbox" @bind="Wizard.Definition.Governance.RequireHealthCheck" /> Require health check for prod</label>
-                <label><input type="checkbox" @bind="Wizard.Definition.Governance.RequireRollback" /> Require rollback for on-prem</label>
-                break;
-            case WizardStep.YamlPreview:
-                <h2>YAML preview</h2>
-                <button type="button" class="btn-primary" @onclick="GeneratePipeline">Generate pipeline</button>
-                @if (_generationError != null)
-                {
-                    <div class="severity-error"><pre>@_generationError</pre></div>
-                }
-                @if (Wizard.DependencyGraph?.Nodes is { Count: > 0 } nodes)
-                {
-                    <h3>Dependency graph</h3>
-                    <ul class="dep-graph">
-                        @foreach (var n in nodes)
-                        {
-                            <li><strong>@n.DisplayName</strong> @(n.DependsOn.Count > 0 ? $"← depends on {string.Join(", ", n.DependsOn)}" : "") @(n.ManualPromotion ? "(manual promotion)" : "")</li>
-                        }
-                    </ul>
-                }
-                @if (Wizard.Result != null)
-                {
-                    <h3>Explanations</h3>
-                    <ul>
-                        @foreach (var ex in Wizard.Result.Explanations.Take(8))
-                        {
-                            <li><code>@ex.TaskName</code>: @ex.Explanation</li>
-                        }
-                    </ul>
-                    <pre class="yaml-preview">@Wizard.Result.Yaml</pre>
-                }
-                break;
-            case WizardStep.ValidationResults:
-                <h2>Validation</h2>
-                @if (Wizard.Result?.ValidationResults is { Count: > 0 } results)
-                {
-                    <ul>
-                        @foreach (var v in results)
-                        {
-                            <li class="severity-@v.Severity.ToString().ToLower()">[@v.Severity] @v.Message — @v.SuggestedFix</li>
-                        }
-                    </ul>
-                }
-                else { <p>No validation issues. Generate YAML first.</p> }
-                break;
-            case WizardStep.DownloadExport:
-                <h2>Download / export</h2>
-                @if (Wizard.Result != null)
-                {
-                    <button type="button" @onclick="DownloadYaml">Download azure-pipelines.yml</button>
-                    @if (!string.IsNullOrEmpty(Wizard.Result.DiagnosticScript))
-                    {
-                        <h3>Agent diagnostics script</h3>
-                        <pre>@Wizard.Result.DiagnosticScript</pre>
-                    }
-                }
-                break;
-        }
+            @switch (Wizard.CurrentStep)
+            {
+                case WizardStep.ProjectType:
+                    <ProjectTypeStep />
+                    break;
+                case WizardStep.BuildAgent:
+                    <BuildAgentStep />
+                    break;
+                case WizardStep.PipelineTemplate:
+                    <TemplateStep />
+                    break;
+                case WizardStep.EnvironmentSelection:
+                    <EnvironmentsStep />
+                    break;
+                case WizardStep.DeploymentTarget:
+                    <DeploymentTargetStep />
+                    break;
+                case WizardStep.IdentityModel:
+                    <IdentityStep />
+                    break;
+                case WizardStep.VariableGroupsAndKeyVault:
+                    <VariablesStep />
+                    break;
+                case WizardStep.ArtifactSettings:
+                    <ArtifactStep />
+                    break;
+                case WizardStep.RollbackSettings:
+                    <RollbackStep />
+                    break;
+                case WizardStep.HealthChecks:
+                    <HealthChecksStep />
+                    break;
+                case WizardStep.Notifications:
+                    <NotificationsStep />
+                    break;
+                case WizardStep.GovernancePolicies:
+                    <GovernanceStep />
+                    break;
+                case WizardStep.YamlPreview:
+                    <PreviewStep />
+                    break;
+                case WizardStep.ValidationResults:
+                    <ValidationStep />
+                    break;
+                case WizardStep.DownloadExport:
+                    <ExportStep />
+                    break;
+            }
         </EditForm>
     </section>
 
     <footer class="wizard-footer">
-        <button disabled="@(Wizard.CurrentStep == WizardStep.ProjectType)" @onclick="Prev">Previous</button>
-        <button disabled="@(Wizard.CurrentStep == WizardStep.DownloadExport)" @onclick="Next">Next</button>
+        <button type="button" disabled="@(Wizard.CurrentStep == WizardStep.ProjectType)" @onclick="Prev">Previous</button>
+        <button type="button" disabled="@(Wizard.CurrentStep == WizardStep.DownloadExport)" @onclick="Next">Next</button>
     </footer>
 </div>
 
 @code {
-    private string _environmentsCsv = "test,preprod,prod";
-    private List<VariableGroupConfig> _variableGroups = new();
-    private bool _useKeyVault;
-    private string _keyVaultName = "";
-    private HealthCheckConfig _healthCheck = new() { Enabled = true };
-    private string _teamsVar = "TEAMS_WEBHOOK_URL";
-    private string? _generationError;
+    private void Prev() => GoTo((WizardStep)Math.Max((int)WizardStep.ProjectType, (int)Wizard.CurrentStep - 1));
+    private void Next() => GoTo((WizardStep)Math.Min((int)WizardStep.DownloadExport, (int)Wizard.CurrentStep + 1));
 
-    protected override void OnInitialized()
+    private void GoTo(WizardStep step)
     {
-        _variableGroups = Wizard.Definition.VariableGroups.ToList();
-        _healthCheck = Wizard.Definition.HealthChecks.FirstOrDefault() ?? _healthCheck;
+        Wizard.CurrentStep = step;
+        // Preview, validation and export always reflect the current settings.
+        if (step >= WizardStep.YamlPreview)
+            Wizard.Generate(Generator);
     }
-
-    private void GoTo(WizardStep step) => Wizard.CurrentStep = step;
-    private void Prev() => Wizard.CurrentStep = (WizardStep)Math.Max(1, (int)Wizard.CurrentStep - 1);
-    private void Next()
-    {
-        SyncState();
-        Wizard.CurrentStep = (WizardStep)Math.Min(15, (int)Wizard.CurrentStep + 1);
-    }
-
-    private void SyncState()
-    {
-        Wizard.Definition.Environments = _environmentsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        Wizard.Definition.VariableGroups = _variableGroups;
-        Wizard.Definition.HealthChecks = new[] { _healthCheck };
-        if (_useKeyVault && !string.IsNullOrWhiteSpace(_keyVaultName))
-            Wizard.Definition.KeyVault = new KeyVaultConfig { KeyVaultName = _keyVaultName };
-        if (!string.IsNullOrWhiteSpace(_teamsVar))
-            Wizard.Definition.Notifications = new[] { new NotificationConfig { NotificationType = NotificationType.TeamsWebhook, TeamsWebhookVariable = _teamsVar, NotifyOnFailure = true } };
-        Wizard.DependencyGraph = PipelineDependencyGraph.FromDefinition(Wizard.Definition);
-        if (Wizard.CurrentStep == WizardStep.PipelineTemplate)
-        {
-            var paths = Wizard.RepoPathsInput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            Wizard.ScanResult = RepoScanner.ScanFileList(paths);
-        }
-    }
-
-    private void AddVariableGroup() => _variableGroups.Add(new VariableGroupConfig { Name = "vg-new" });
-
-    private void GeneratePipeline()
-    {
-        SyncState();
-        try
-        {
-            Wizard.Result = Generator.Generate(Wizard.Definition);
-            _generationError = null;
-        }
-        catch (ArgumentException ex)
-        {
-            // Invalid wizard input: show the validation errors instead of crashing the circuit.
-            Wizard.Result = null;
-            _generationError = ex.Message;
-        }
-    }
-
-    private async Task DownloadYaml()
-    {
-        if (Wizard.Result == null) return;
-        // Browser download via JS interop would be added in production
-        await Task.CompletedTask;
-    }
-
-    private static string GetStepTitle(WizardStep step) => step switch
-    {
-        WizardStep.ProjectType => "Project type",
-        WizardStep.BuildAgent => "Build agent",
-        WizardStep.PipelineTemplate => "Template",
-        WizardStep.EnvironmentSelection => "Environments",
-        WizardStep.DeploymentTarget => "Target",
-        WizardStep.IdentityModel => "Identity",
-        WizardStep.VariableGroupsAndKeyVault => "Variables & KV",
-        WizardStep.ArtifactSettings => "Artifacts",
-        WizardStep.RollbackSettings => "Rollback",
-        WizardStep.HealthChecks => "Health checks",
-        WizardStep.Notifications => "Notifications",
-        WizardStep.GovernancePolicies => "Governance",
-        WizardStep.YamlPreview => "YAML preview",
-        WizardStep.ValidationResults => "Validation",
-        WizardStep.DownloadExport => "Export",
-        _ => step.ToString()
-    };
 }

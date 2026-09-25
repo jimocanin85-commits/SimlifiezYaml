@@ -90,7 +90,7 @@ public sealed class ArtifactYamlService : IArtifactYamlService
                     ["command"] = "buildAndPush",
                     ["repository"] = config.ArtifactName,
                     ["dockerfile"] = config.PackagePath ?? "**/Dockerfile",
-                    ["containerRegistry"] = "$(DOCKER_SERVICE_CONNECTION)",
+                    ["containerRegistry"] = config.ContainerRegistryConnection,
                     ["tags"] = "$(Build.BuildId)"
                 }, "Build and push Docker image")
             },

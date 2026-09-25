@@ -93,7 +93,7 @@ Write-Host "Container $name is running $image"
         var deployment = definition.Deployment;
         var inputs = new Dictionary<string, string>
         {
-            ["azureSubscription"] = "$(AZURE_SERVICE_CONNECTION)",
+            ["azureSubscription"] = definition.AzureServiceConnection,
             ["appType"] = "webApp",
             ["appName"] = deployment.WebAppNameOrDefault,
             ["package"] = packagePath

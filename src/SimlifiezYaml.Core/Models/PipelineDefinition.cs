@@ -53,6 +53,12 @@ public sealed class PipelineDefinition
     public KeyVaultConfig? KeyVault { get; set; }
     public ArtifactConfig Artifact { get; set; } = new();
     public DeploymentConfig Deployment { get; set; } = new();
+
+    /// <summary>Azure Resource Manager service connection used for App Service deployments and slot swaps.</summary>
+    public string AzureServiceConnection { get; set; } = "$(AZURE_SERVICE_CONNECTION)";
+
+    /// <summary>Id of the marketplace template last applied, if any.</summary>
+    public string? TemplateId { get; set; }
     public RollbackConfig Rollback { get; set; } = new();
     public IReadOnlyList<HealthCheckConfig> HealthChecks { get; set; } = Array.Empty<HealthCheckConfig>();
     public IReadOnlyList<NotificationConfig> Notifications { get; set; } = Array.Empty<NotificationConfig>();

@@ -1,0 +1,27 @@
+@inject WizardState Wizard
+
+<h2>Project</h2>
+<label for="pipeline-name">Pipeline name</label>
+<InputText id="pipeline-name" @bind-Value="Wizard.Definition.Name" class="form-control" />
+
+<label for="project-type">Project type</label>
+<InputSelect id="project-type" @bind-Value="Wizard.Definition.ProjectType" class="form-control">
+    @foreach (var pt in Enum.GetValues<ProjectType>())
+    {
+        <option value="@pt">@pt</option>
+    }
+</InputSelect>
+
+@if (Wizard.Definition.ProjectType == ProjectType.DotNet)
+{
+    <label for="project-path">Project(s) to build and publish</label>
+    <InputText id="project-path" @bind-Value="Wizard.Definition.DotNetProjectPath" class="form-control" placeholder="**/*.csproj" />
+    <p class="hint">Leave as <code>**/*.csproj</code> to publish all web projects, or point to one project, e.g. <code>src/MyApp/MyApp.csproj</code>.</p>
+
+    <label for="test-path">Test projects</label>
+    <InputText id="test-path" @bind-Value="Wizard.Definition.SolutionPath" class="form-control" placeholder="**/*Tests*.csproj" />
+}
+else
+{
+    <div class="info-box">Build and test steps for @Wizard.Definition.ProjectType projects are generated as placeholders for you to fill in.</div>
+}
