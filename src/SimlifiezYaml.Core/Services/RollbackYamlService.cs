@@ -18,9 +18,9 @@ public sealed class RollbackYamlService : IRollbackYamlService
             RollbackTarget.Iis => new[]
             {
                 YamlBuilder.PowerShellStep($"""
-$backupRoot = '{backupPath}'
+$backupRoot = {YamlBuilder.PsLiteral(backupPath)}
 New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
-$sitePath = 'C:\\inetpub\\wwwroot'
+$sitePath = 'C:\inetpub\wwwroot'
 Copy-Item -Path $sitePath -Destination $backupRoot -Recurse -Force
 Write-Host "IIS backup created at $backupRoot"
 """, "Backup IIS site before deploy")
@@ -28,18 +28,18 @@ Write-Host "IIS backup created at $backupRoot"
             RollbackTarget.WindowsService => new[]
             {
                 YamlBuilder.PowerShellStep($"""
-$backupRoot = '{backupPath}'
+$backupRoot = {YamlBuilder.PsLiteral(backupPath)}
 New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
 Stop-Service -Name 'MyService' -Force -ErrorAction SilentlyContinue
-Copy-Item -Path 'C:\\Services\\MyService' -Destination $backupRoot -Recurse -Force
+Copy-Item -Path 'C:\Services\MyService' -Destination $backupRoot -Recurse -Force
 Write-Host 'Windows Service backup completed'
 """, "Backup Windows Service before deploy")
             },
             RollbackTarget.FileShare => new[]
             {
                 YamlBuilder.PowerShellStep($"""
-$backupRoot = '{backupPath}'
-robocopy '\\\\fileserver\\deploy' $backupRoot /MIR /R:2 /W:5
+$backupRoot = {YamlBuilder.PsLiteral(backupPath)}
+robocopy '\\fileserver\deploy' $backupRoot /MIR /R:2 /W:5
 if ($LASTEXITCODE -ge 8) {{ throw 'File share backup failed' }}
 """, "Backup file share deployment")
             },
@@ -77,10 +77,10 @@ Write-Host 'Docker image tagged for rollback'
             RollbackTarget.Iis => new[]
             {
                 YamlBuilder.PowerShellStep($"""
-$backupRoot = '{config.BackupPath ?? "D:\\backups"}'
+$backupRoot = {YamlBuilder.PsLiteral(config.BackupPath ?? "D:\\backups")}
 $latest = Get-ChildItem $backupRoot | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $latest) {{ throw 'No backup found for rollback' }}
-Copy-Item -Path $latest.FullName -Destination 'C:\\inetpub\\wwwroot' -Recurse -Force
+Copy-Item -Path $latest.FullName -Destination 'C:\inetpub\wwwroot' -Recurse -Force
 Write-Host 'IIS rollback completed'
 """, "Rollback IIS deployment")
             },

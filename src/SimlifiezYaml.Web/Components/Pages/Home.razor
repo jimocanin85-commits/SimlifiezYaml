@@ -18,6 +18,8 @@
     </nav>
 
     <section class="wizard-content">
+        @* Input* components need a cascading EditContext, so the step content lives in an EditForm. *@
+        <EditForm Model="Wizard.Definition">
         @switch (Wizard.CurrentStep)
         {
             case WizardStep.ProjectType:
@@ -73,7 +75,7 @@
                         </InputSelect>
                     </div>
                 }
-                <button @onclick="AddVariableGroup">Add variable group</button>
+                <button type="button" @onclick="AddVariableGroup">Add variable group</button>
                 <h3>Azure Key Vault</h3>
                 <label><input type="checkbox" @bind="_useKeyVault" /> Enable Key Vault pre-job</label>
                 @if (_useKeyVault)
@@ -117,7 +119,11 @@
                 break;
             case WizardStep.YamlPreview:
                 <h2>YAML preview</h2>
-                <button class="btn-primary" @onclick="GeneratePipeline">Generate pipeline</button>
+                <button type="button" class="btn-primary" @onclick="GeneratePipeline">Generate pipeline</button>
+                @if (_generationError != null)
+                {
+                    <div class="severity-error"><pre>@_generationError</pre></div>
+                }
                 @if (Wizard.DependencyGraph?.Nodes is { Count: > 0 } nodes)
                 {
                     <h3>Dependency graph</h3>
@@ -157,7 +163,7 @@
                 <h2>Download / export</h2>
                 @if (Wizard.Result != null)
                 {
-                    <button @onclick="DownloadYaml">Download azure-pipelines.yml</button>
+                    <button type="button" @onclick="DownloadYaml">Download azure-pipelines.yml</button>
                     @if (!string.IsNullOrEmpty(Wizard.Result.DiagnosticScript))
                     {
                         <h3>Agent diagnostics script</h3>
@@ -166,6 +172,7 @@
                 }
                 break;
         }
+        </EditForm>
     </section>
 
     <footer class="wizard-footer">
@@ -181,6 +188,7 @@
     private string _keyVaultName = "";
     private HealthCheckConfig _healthCheck = new() { Enabled = true };
     private string _teamsVar = "TEAMS_WEBHOOK_URL";
+    private string? _generationError;
 
     protected override void OnInitialized()
     {
@@ -218,7 +226,17 @@
     private void GeneratePipeline()
     {
         SyncState();
-        Wizard.Result = Generator.Generate(Wizard.Definition);
+        try
+        {
+            Wizard.Result = Generator.Generate(Wizard.Definition);
+            _generationError = null;
+        }
+        catch (ArgumentException ex)
+        {
+            // Invalid wizard input: show the validation errors instead of crashing the circuit.
+            Wizard.Result = null;
+            _generationError = ex.Message;
+        }
     }
 
     private async Task DownloadYaml()

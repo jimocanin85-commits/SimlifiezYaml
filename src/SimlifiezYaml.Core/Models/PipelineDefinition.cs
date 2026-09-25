@@ -50,7 +50,7 @@ public sealed class PipelineDefinition
     public TriggerConfig Trigger { get; set; } = TriggerConfig.Default;
     public IReadOnlyList<string> Environments { get; set; } = new[] { "test", "preprod", "prod" };
     public IReadOnlyList<VariableGroupConfig> VariableGroups { get; set; } = Array.Empty<VariableGroupConfig>();
-    public KeyVaultConfig? KeyVault { get; set; };
+    public KeyVaultConfig? KeyVault { get; set; }
     public ArtifactConfig Artifact { get; set; } = new();
     public RollbackConfig Rollback { get; set; } = new();
     public IReadOnlyList<HealthCheckConfig> HealthChecks { get; set; } = Array.Empty<HealthCheckConfig>();

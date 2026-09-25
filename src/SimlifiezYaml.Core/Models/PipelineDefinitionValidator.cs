@@ -36,9 +36,8 @@ public static class PipelineDefinitionValidator
         {
             if (string.IsNullOrWhiteSpace(env))
                 errors.Add("Environment names cannot be empty or whitespace.");
-
-            if (!IsValidEnvironmentName(env))
-                errors.Add($"Environment name '{env}' contains invalid characters. Use lowercase alphanumeric only.");
+            else if (!IsValidEnvironmentName(env))
+                errors.Add($"Environment name '{env}' contains invalid characters. Use lowercase letters, digits and hyphens only.");
         }
 
         // Build agent validation
@@ -50,7 +49,7 @@ public static class PipelineDefinitionValidator
             errors.Add("Artifact configuration is required.");
 
         // Deployment strategy validation
-        if (definition.DeploymentStrategy != null && definition.DeploymentStrategy.Strategy == DeploymentStrategy.Canary)
+        if (definition.DeploymentStrategy != null && definition.DeploymentStrategy.StrategyType == DeploymentStrategyType.Canary)
         {
             if (definition.DeploymentStrategy.CanaryPercentage < 0 || definition.DeploymentStrategy.CanaryPercentage > 100)
                 errors.Add("Canary deployment percentage must be between 0 and 100.");
@@ -74,13 +73,13 @@ public static class PipelineDefinitionValidator
         {
             foreach (var hc in definition.HealthChecks)
             {
-                if (hc.HealthCheckType == HealthCheckType.Http && (hc.Endpoint == null || string.IsNullOrWhiteSpace(hc.Endpoint.ToString())))
+                if (hc.Enabled && hc.HealthCheckType == HealthCheckType.HttpEndpoint && !Uri.TryCreate(hc.Url, UriKind.Absolute, out _))
                     errors.Add("HTTP health check requires a valid endpoint URL.");
             }
         }
 
         // IaC validation
-        if (definition.IaC != null && definition.IaC.IacType == IacType.Terraform && string.IsNullOrWhiteSpace(definition.IaC.WorkingDirectory))
+        if (definition.IaC != null && definition.IaC.Tool == IaCTool.Terraform && string.IsNullOrWhiteSpace(definition.IaC.WorkingDirectory))
             errors.Add("Terraform IaC requires a working directory.");
 
         return errors;

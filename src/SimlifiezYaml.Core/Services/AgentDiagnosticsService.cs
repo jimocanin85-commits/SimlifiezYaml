@@ -1,6 +1,7 @@
 using System.Text;
 using SimlifiezYaml.Core.Abstractions;
 using SimlifiezYaml.Core.Models;
+using SimlifiezYaml.Core.Yaml;
 
 namespace SimlifiezYaml.Core.Services;
 
@@ -59,7 +60,7 @@ try {
 
         foreach (var folder in config.DeploymentFolders)
         {
-            sb.AppendLine($"$results += [pscustomobject]@{{ Check='Path {folder}'; Result=(Test-Path '{folder}') }}");
+            sb.AppendLine($"$results += [pscustomobject]@{{ Check={YamlBuilder.PsLiteral("Path " + folder)}; Result=(Test-Path -LiteralPath {YamlBuilder.PsLiteral(folder)}) }}");
         }
 
         if (config.CheckNetworkAccess)

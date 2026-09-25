@@ -1,4 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using SimlifiezYaml.Core.Abstractions;
 using SimlifiezYaml.Core.Generators;
 using SimlifiezYaml.Core.Services;
@@ -9,6 +12,10 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddSimlifiezYamlCore(this IServiceCollection services)
     {
+        // Fall back to a no-op logger when the host has not configured logging (e.g. unit tests).
+        // Hosts that call AddLogging() first keep their own ILogger<T> registration.
+        services.TryAdd(ServiceDescriptor.Singleton(typeof(ILogger<>), typeof(NullLogger<>)));
+
         services.AddSingleton<IVariableGroupService, VariableGroupService>();
         services.AddSingleton<IKeyVaultYamlService, KeyVaultYamlService>();
         services.AddSingleton<IArtifactYamlService, ArtifactYamlService>();

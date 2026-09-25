@@ -27,7 +27,7 @@ public sealed class PipelineDependencyGraph
         string? previous = "Artifact";
         foreach (var env in definition.Environments)
         {
-            var id = $"Deploy_{env}";
+            var id = $"Deploy_{Yaml.YamlBuilder.ToIdentifier(env)}";
             nodes.Add(new DependencyGraphNode
             {
                 Id = id,

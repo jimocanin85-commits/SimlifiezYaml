@@ -16,7 +16,7 @@ public sealed class HealthCheckYamlService : IHealthCheckYamlService
             HealthCheckType.HttpEndpoint => new[]
             {
                 YamlBuilder.PowerShellStep($"""
-$uri = '{config.Url ?? "https://localhost/health"}'
+$uri = {YamlBuilder.PsLiteral(config.Url ?? "https://localhost/health")}
 $expected = {config.ExpectedStatusCode}
 $timeout = {config.TimeoutSeconds}
 $retries = {config.RetryCount}
@@ -35,7 +35,7 @@ exit 1
             {
                 YamlBuilder.PowerShellStep($"""
 Import-Module WebAdministration -ErrorAction Stop
-$pool = '{config.AppPoolName ?? "DefaultAppPool"}'
+$pool = {YamlBuilder.PsLiteral(config.AppPoolName ?? "DefaultAppPool")}
 $state = (Get-WebAppPoolState -Name $pool).Value
 if ($state -ne 'Started') {{ throw "App pool $pool is $state" }}
 Write-Host "App pool $pool is healthy"
@@ -44,7 +44,7 @@ Write-Host "App pool $pool is healthy"
             HealthCheckType.WindowsService => new[]
             {
                 YamlBuilder.PowerShellStep($"""
-$svc = Get-Service -Name '{config.ServiceName ?? "W3SVC"}' -ErrorAction Stop
+$svc = Get-Service -Name {YamlBuilder.PsLiteral(config.ServiceName ?? "W3SVC")} -ErrorAction Stop
 if ($svc.Status -ne 'Running') {{ throw "Service $($svc.Name) is $($svc.Status)" }}
 Write-Host "Service $($svc.Name) is running"
 """, "Windows service health check")

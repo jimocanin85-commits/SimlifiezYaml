@@ -35,7 +35,8 @@ public sealed class DeploymentStageGenerator : IStageGenerator
         var previousStage = "Artifact";
         foreach (var env in definition.Environments)
         {
-            var stageName = $"Deploy_{env}";
+            var envId = YamlBuilder.ToIdentifier(env);
+            var stageName = $"Deploy_{envId}";
             var steps = new StringBuilder();
             steps.AppendLine(string.Join(Environment.NewLine, _artifactService.GenerateDownloadSteps(definition.Artifact, env)));
 
@@ -68,7 +69,7 @@ public sealed class DeploymentStageGenerator : IStageGenerator
   condition: {condition}
 {stageVars}
   jobs:
-  - deployment: DeployTo{env}
+  - deployment: DeployTo{envId}
     displayName: 'Deploy to {env}'
     environment: {env}
     strategy:

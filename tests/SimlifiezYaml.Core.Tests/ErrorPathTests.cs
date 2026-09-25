@@ -44,7 +44,7 @@ public class ErrorPathTests
             Environments = Array.Empty<string>()
         };
         var errors = PipelineDefinitionValidator.Validate(definition);
-        Assert.Contains(errors, e => e.Contains("at least one environment"));
+        Assert.Contains(errors, e => e.Contains("at least one environment", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class ErrorPathTests
             Name = "test",
             DeploymentStrategy = new DeploymentStrategyConfig
             {
-                Strategy = DeploymentStrategy.Canary,
+                StrategyType = DeploymentStrategyType.Canary,
                 CanaryPercentage = 150
             }
         };
@@ -120,7 +120,7 @@ public class ErrorPathTests
             Name = "test",
             HealthChecks = new[]
             {
-                new HealthCheckConfig { HealthCheckType = HealthCheckType.Http, Endpoint = null }
+                new HealthCheckConfig { Enabled = true, HealthCheckType = HealthCheckType.HttpEndpoint, Url = null }
             }
         };
         var errors = PipelineDefinitionValidator.Validate(definition);
@@ -152,10 +152,12 @@ public class ErrorPathTests
     #region YamlBuilder Escaping Tests
 
     [Fact]
-    public void PowerShellStep_EscapesSingleQuotes()
+    public void PowerShellStep_WritesScriptVerbatim()
     {
-        var step = YamlBuilder.PowerShellStep("Write-Host 'test'", "Test");
-        Assert.Contains("''test''", step);
+        // Scripts live in a YAML literal block, so they must NOT be escaped.
+        var step = YamlBuilder.PowerShellStep("Write-Host 'test' $(Build.BuildId) $($x.Name)", "Test");
+        Assert.Contains("Write-Host 'test' $(Build.BuildId) $($x.Name)", step);
+        Assert.DoesNotContain("''test''", step);
     }
 
     [Fact]
@@ -170,8 +172,7 @@ public class ErrorPathTests
     {
         var script = "Write-Host 'line 1'\nWrite-Host 'line 2'";
         var step = YamlBuilder.PowerShellStep(script, "Multi");
-        Assert.Contains("Write-Host ''line 1''", step);
-        Assert.Contains("Write-Host ''line 2''", step);
+        Assert.Contains("    - powershell: |\n        Write-Host 'line 1'\n        Write-Host 'line 2'\n", step);
     }
 
     [Fact]
@@ -275,13 +276,28 @@ public class ErrorPathTests
 
     #region Escaping Security Tests
 
-    [Fact]
-    public void PowerShellStep_DoesNotAllowSubexpressionExecution()
+    [Theory]
+    [InlineData("C:\\path\\x", "'C:\\path\\x'")]
+    [InlineData("it's", "'it''s'")]
+    [InlineData("$(Get-Secret); Remove-Item *", "'$(Get-Secret); Remove-Item *'")]
+    [InlineData("a\nb", "'a b'")]
+    public void PsLiteral_QuotesUserValues(string input, string expected)
     {
-        var malicious = "Write-Host $(Get-Secret)";
-        var step = YamlBuilder.PowerShellStep(malicious, "Test");
-        // Verify the subexpression is escaped/safe
-        Assert.Contains("powershell:", step);
+        Assert.Equal(expected, YamlBuilder.PsLiteral(input));
+    }
+
+    [Fact]
+    public void YamlString_DoesNotDoubleBackslashes()
+    {
+        Assert.Equal("'D:\\backups'", YamlBuilder.YamlString("D:\\backups"));
+    }
+
+    [Theory]
+    [InlineData("prod", "prod")]
+    [InlineData("pre-prod", "pre_prod")]
+    public void ToIdentifier_ProducesValidStageNames(string input, string expected)
+    {
+        Assert.Equal(expected, YamlBuilder.ToIdentifier(input));
     }
 
     [Fact]

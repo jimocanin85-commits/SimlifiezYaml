@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using SimlifiezYaml.Core.Abstractions;
 using SimlifiezYaml.Core.Models;
 using SimlifiezYaml.Core.Yaml;
@@ -27,7 +28,7 @@ public sealed class PipelineYamlAssembler
     /// <summary>
     /// Adds the trigger section with configurable branches.
     /// </summary>
-    public PipelineYamlAssembler AddTrigger(params string[] branches)
+    public PipelineYamlAssembler AddTrigger(params string[]? branches)
     {
         if (branches == null || branches.Length == 0)
             branches = new[] { "main", "develop" };
@@ -85,7 +86,7 @@ public sealed class PipelineYamlAssembler
     /// <summary>
     /// Adds any stage with custom content.
     /// </summary>
-    public PipelineYamlAssembler AddStage(string stageYaml)
+    public PipelineYamlAssembler AddStage(string? stageYaml)
     {
         if (!string.IsNullOrWhiteSpace(stageYaml))
         {
@@ -135,7 +136,7 @@ public sealed class PipelineYamlAssembler
         _yaml.AppendLine($$"""
 - stage: Rollback
   displayName: 'Rollback on failure'
-  dependsOn: Deploy_{{lastEnv}}
+  dependsOn: Deploy_{{YamlBuilder.ToIdentifier(lastEnv)}}
   condition: failed()
   jobs:
   - job: RollbackJob
@@ -146,9 +147,11 @@ public sealed class PipelineYamlAssembler
     }
 
     /// <summary>
-    /// Adds the Notification stage if configured.
+    /// Adds notification stages. Success notifications run only when the last deployment
+    /// succeeded; failure notifications run when any earlier stage failed. The outcome has to be
+    /// decided at stage level: a step-level <c>failed()</c> would only look at the notify job itself.
     /// </summary>
-    public PipelineYamlAssembler AddNotificationStage(
+    public PipelineYamlAssembler AddNotificationStages(
         IReadOnlyList<NotificationConfig> notifications,
         NotificationStepGenerator notificationGenerator,
         PipelineDefinition definition)
@@ -157,19 +160,44 @@ public sealed class PipelineYamlAssembler
             return this;
 
         var lastEnv = definition.Environments.LastOrDefault() ?? "prod";
-        var steps = string.Join(Environment.NewLine, notificationGenerator.GenerateSteps(definition));
+        var successSteps = notificationGenerator.GenerateSteps(definition, succeeded: true);
+        if (successSteps.Count > 0)
+        {
+            AppendNotifyStage("Notify_Success", "Notify on success",
+                $"Deploy_{YamlBuilder.ToIdentifier(lastEnv)}", "succeeded()", successSteps);
+        }
+
+        var failureSteps = notificationGenerator.GenerateSteps(definition, succeeded: false);
+        if (failureSteps.Count > 0)
+        {
+            // Depend directly on every stage so failed() is true whichever one failed.
+            var allStages = StageNames().Where(n => !n.StartsWith("Notify_", StringComparison.Ordinal)).ToList();
+            var dependsOn = allStages.Count == 0 ? "[]" : "\n" + string.Join("\n", allStages.Select(n => $"  - {n}"));
+            AppendNotifyStage("Notify_Failure", "Notify on failure", dependsOn, "failed()", failureSteps);
+        }
+
+        return this;
+    }
+
+    private void AppendNotifyStage(string name, string displayName, string dependsOn, string condition, IReadOnlyList<string> steps)
+    {
         _yaml.AppendLine($$"""
-- stage: Notify
-  displayName: 'Pipeline notifications'
-  dependsOn: Deploy_{{lastEnv}}
-  condition: always()
+- stage: {{name}}
+  displayName: {{YamlBuilder.YamlString(displayName)}}
+  dependsOn: {{dependsOn}}
+  condition: {{condition}}
   jobs:
   - job: Notify
     steps:
-{{YamlBuilder.Indent(steps, 6)}}
+{{YamlBuilder.Indent(string.Join("\n", steps), 6)}}
 """);
-        return this;
     }
+
+    /// <summary>Names of the stages added so far, in order.</summary>
+    private IEnumerable<string> StageNames() =>
+        StageNameRegex.Matches(_yaml.ToString()).Select(m => m.Groups[1].Value);
+
+    private static readonly Regex StageNameRegex = new(@"^- stage: ([A-Za-z0-9_]+)\s*$", RegexOptions.Multiline);
 
     /// <summary>
     /// Gets the assembled YAML document.

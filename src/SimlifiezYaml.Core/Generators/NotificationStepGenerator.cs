@@ -9,16 +9,14 @@ public sealed class NotificationStepGenerator : IStepGenerator
 
     public NotificationStepGenerator(INotificationYamlService notificationService) => _notificationService = notificationService;
 
-    public IReadOnlyList<string> GenerateSteps(PipelineDefinition definition, string? environment = null)
-    {
-        var steps = new List<string>();
-        foreach (var n in definition.Notifications)
-        {
-            if (n.NotifyOnSuccess)
-                steps.AddRange(_notificationService.GenerateNotificationSteps(n, succeeded: true));
-            if (n.NotifyOnFailure)
-                steps.AddRange(_notificationService.GenerateNotificationSteps(n, succeeded: false));
-        }
-        return steps;
-    }
+    /// <summary>Returns every notification step (success and failure).</summary>
+    public IReadOnlyList<string> GenerateSteps(PipelineDefinition definition, string? environment = null) =>
+        GenerateSteps(definition, succeeded: true).Concat(GenerateSteps(definition, succeeded: false)).ToList();
+
+    /// <summary>Returns the steps to run when the pipeline succeeded or failed.</summary>
+    public IReadOnlyList<string> GenerateSteps(PipelineDefinition definition, bool succeeded) =>
+        definition.Notifications
+            .Where(n => succeeded ? n.NotifyOnSuccess : n.NotifyOnFailure)
+            .SelectMany(n => _notificationService.GenerateNotificationSteps(n, succeeded))
+            .ToList();
 }
