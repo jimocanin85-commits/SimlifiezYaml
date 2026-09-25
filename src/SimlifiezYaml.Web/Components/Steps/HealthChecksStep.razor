@@ -1,0 +1,50 @@
+@inject WizardState Wizard
+
+<h2>Health checks</h2>
+<p class="hint">Health checks run after each deployment. A failing check fails the deployment, which triggers the rollback.</p>
+@foreach (var hc in Wizard.HealthChecks)
+{
+    <div class="card">
+        <label><InputCheckbox @bind-Value="hc.Enabled" /> Enabled</label>
+        <InputSelect @bind-Value="hc.HealthCheckType" class="form-control" aria-label="Health check type">
+            @foreach (var h in Enum.GetValues<HealthCheckType>())
+            {
+                <option value="@h">@h</option>
+            }
+        </InputSelect>
+        @switch (hc.HealthCheckType)
+        {
+            case HealthCheckType.HttpEndpoint:
+                <label>URL (<code>{environment}</code> is replaced per environment)</label>
+                <InputText @bind-Value="hc.Url" class="form-control" placeholder="https://myapp-{environment}.contoso.com/health" />
+                <label>Expected status code</label>
+                <InputNumber @bind-Value="hc.ExpectedStatusCode" class="form-control" />
+                <label>Timeout (seconds) and retries</label>
+                <InputNumber @bind-Value="hc.TimeoutSeconds" class="form-control" />
+                <InputNumber @bind-Value="hc.RetryCount" class="form-control" />
+                break;
+            case HealthCheckType.IisAppPool:
+                <label>App pool</label>
+                <InputText @bind-Value="hc.AppPoolName" class="form-control" placeholder="DefaultAppPool" />
+                break;
+            case HealthCheckType.WindowsService:
+                <label>Service name</label>
+                <InputText @bind-Value="hc.ServiceName" class="form-control" placeholder="W3SVC" />
+                break;
+            case HealthCheckType.PortCheck:
+                <label>Port</label>
+                <InputNumber @bind-Value="hc.Port" class="form-control" placeholder="80" />
+                break;
+            case HealthCheckType.CustomPowerShell:
+                <label>PowerShell (throw or exit non-zero to fail)</label>
+                <InputTextArea @bind-Value="hc.CustomScript" class="form-control" rows="4" />
+                break;
+        }
+        <button type="button" class="btn-link" @onclick="() => Wizard.HealthChecks.Remove(hc)">Remove</button>
+    </div>
+}
+<button type="button" class="btn-secondary" @onclick="Add">Add health check</button>
+
+@code {
+    private void Add() => Wizard.HealthChecks.Add(new HealthCheckConfig { Enabled = true, HealthCheckType = HealthCheckType.HttpEndpoint });
+}

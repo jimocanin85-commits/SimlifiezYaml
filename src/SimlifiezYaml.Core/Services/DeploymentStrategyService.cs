@@ -14,7 +14,8 @@ namespace SimlifiezYaml.Core.Services;
 public sealed class DeploymentStrategyService : IDeploymentStrategyService
 {
     public IReadOnlyList<string> GenerateStrategySteps(
-        DeploymentStrategyConfig config, string environment, string deploymentTaskYaml, string webAppName = "$(WEBAPP_NAME)")
+        DeploymentStrategyConfig config, string environment, string deploymentTaskYaml, string webAppName = "$(WEBAPP_NAME)",
+        string azureServiceConnection = "$(AZURE_SERVICE_CONNECTION)")
     {
         return config.StrategyType switch
         {
@@ -37,7 +38,7 @@ public sealed class DeploymentStrategyService : IDeploymentStrategyService
                 deploymentTaskYaml,
                 YamlBuilder.Task("AzureAppServiceManage@0", new Dictionary<string, string>
                 {
-                    ["azureSubscription"] = "$(AZURE_SERVICE_CONNECTION)",
+                    ["azureSubscription"] = azureServiceConnection,
                     ["Action"] = "Swap Slots",
                     ["WebAppName"] = webAppName,
                     ["ResourceGroupName"] = "$(RESOURCE_GROUP)",

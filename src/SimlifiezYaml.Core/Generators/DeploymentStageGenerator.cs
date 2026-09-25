@@ -141,7 +141,7 @@ public sealed class DeploymentStageGenerator : IStageGenerator
 
         var deployTask = string.Join("\n", _deploymentStepService.GenerateDeploySteps(definition, env, packagePath));
         deploySteps.AddRange(_strategyService.GenerateStrategySteps(
-            definition.DeploymentStrategy, env, deployTask, definition.Deployment.WebAppNameOrDefault));
+            definition.DeploymentStrategy, env, deployTask, definition.Deployment.WebAppNameOrDefault, definition.AzureServiceConnection));
 
         foreach (var hc in definition.HealthChecks.Where(h => h.Enabled))
             deploySteps.AddRange(_healthCheckService.GenerateHealthCheckSteps(ForEnvironment(hc, env)));

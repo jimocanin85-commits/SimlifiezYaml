@@ -62,7 +62,7 @@ public interface IIacYamlService
 
 public interface IDeploymentStrategyService
 {
-    IReadOnlyList<string> GenerateStrategySteps(DeploymentStrategyConfig config, string environment, string deploymentTaskYaml, string webAppName = "$(WEBAPP_NAME)");
+    IReadOnlyList<string> GenerateStrategySteps(DeploymentStrategyConfig config, string environment, string deploymentTaskYaml, string webAppName = "$(WEBAPP_NAME)", string azureServiceConnection = "$(AZURE_SERVICE_CONNECTION)");
     string GetStrategyNote(DeploymentStrategyConfig config);
 }
 
@@ -105,6 +105,12 @@ public interface ITemplateMarketplaceService
     IReadOnlyList<PipelineTemplate> GetAllTemplates();
     IReadOnlyList<PipelineTemplate> GetByCategory(TemplateCategory category);
     PipelineTemplate? GetById(string id);
+
+    /// <summary>
+    /// Applies a template's settings (project type, target, artifact, deployment kind, stages)
+    /// to <paramref name="definition"/>. Returns false if the template id is unknown.
+    /// </summary>
+    bool ApplyTo(string templateId, PipelineDefinition definition);
 }
 
 public interface IPipelineGeneratorService
