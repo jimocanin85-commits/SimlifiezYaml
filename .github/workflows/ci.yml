@@ -23,4 +23,12 @@ jobs:
         run: dotnet build SimlifiezYaml.sln --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test SimlifiezYaml.sln --configuration Release --no-build --logger "console;verbosity=normal" --logger GitHubActions
+        run: dotnet test SimlifiezYaml.sln --configuration Release --no-build --logger "console;verbosity=normal" --logger GitHubActions --logger "trx;LogFileName=results.trx" --results-directory TestResults
+
+      - name: Test summary
+        if: always()
+        run: |
+          for f in TestResults/*.trx; do
+            c=$(grep -o "<Counters [^>]*>" "$f")
+            echo "::notice title=Test results::$c"
+          done

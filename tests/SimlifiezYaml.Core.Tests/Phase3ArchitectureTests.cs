@@ -193,7 +193,7 @@ public class Phase3ArchitectureTests
             Trigger = TriggerConfig.MainOnly
         };
         Assert.NotNull(definition.Trigger);
-        Assert.True(definition.Trigger.IncludeBranches.Contains("main"));
+        Assert.Contains("main", definition.Trigger.IncludeBranches);
     }
 
     [Fact]
