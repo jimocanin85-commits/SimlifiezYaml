@@ -277,6 +277,15 @@ public class GeneratedYamlTests
         Assert.Equal("windows-latest", (string)pool["vmImage"]);
     }
 
+    [Fact]
+    public void GeneratedYaml_WizardDefaultsProduceAValidPipelineWithoutErrors()
+    {
+        var result = _generator.Generate(SimlifiezYaml.Web.State.WizardState.CreateDefault());
+
+        AssertValidPipeline(result.Yaml);
+        Assert.DoesNotContain(result.ValidationResults, v => v.Severity == ValidationSeverity.Error);
+    }
+
     private static Dictionary<object, object> StageNamed(Dictionary<object, object> root, string name) =>
         Assert.Single(StagesOf(root), s => (string)s["stage"] == name);
 

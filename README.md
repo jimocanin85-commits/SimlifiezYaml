@@ -46,4 +46,16 @@ Modular generators (not a monolithic YAML builder):
 - `RollbackStepGenerator`, `HealthCheckStepGenerator`, `NotificationStepGenerator`
 - `GovernanceValidator`
 
-Pipeline flow: **Build → Test → Artifact → Deploy (test/preprod/prod) → Health Check → Rollback (on failure) → Notify**
+Pipeline flow: **Build → Test → Artifact → Deploy_{env} (one stage per environment) → Notify_Success / Notify_Failure**
+
+Each `Deploy_{env}` stage contains:
+
+1. An optional `Infrastructure` job (Terraform/Bicep/ARM/PowerShell) for that environment, which runs first.
+2. A `deployment` job targeting the Azure DevOps environment, so its approvals and checks apply. It:
+   - downloads the artifact and loads Key Vault secrets
+   - backs up the current version to `{BackupPath}\{env}\{BuildId}`, keeping the last N backups
+   - deploys according to the deployment kind (IIS, Windows service, file share, App Service, Docker, or a custom script)
+   - runs the health checks (`{environment}` in a URL is replaced per environment)
+   - rolls back from that backup in its `on: failure` hook if any step fails
+
+On-premises deployments run on the servers registered in each environment (Virtual machine resources), and the Rolling strategy uses Azure DevOps' native `rolling` strategy. Settings you leave empty become pipeline variables such as `$(DEPLOY_PATH)` or `$(WEBAPP_NAME)`, which you define in a variable group.
