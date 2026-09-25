@@ -5,30 +5,31 @@ using SimlifiezYaml.Core.Yaml;
 
 namespace SimlifiezYaml.Core.Services;
 
+/// <summary>
+/// Wraps the deploy step(s) for the chosen strategy. Rolling deployments use Azure DevOps'
+/// native <c>rolling</c> strategy (see <c>DeploymentStageGenerator</c>); blue-green and canary
+/// need traffic routing that depends on your load balancer, so they emit a clear warning step
+/// where that logic belongs.
+/// </summary>
 public sealed class DeploymentStrategyService : IDeploymentStrategyService
 {
-    public IReadOnlyList<string> GenerateStrategySteps(DeploymentStrategyConfig config, string environment, string deploymentTaskYaml)
+    public IReadOnlyList<string> GenerateStrategySteps(
+        DeploymentStrategyConfig config, string environment, string deploymentTaskYaml, string webAppName = "$(WEBAPP_NAME)")
     {
         return config.StrategyType switch
         {
-            DeploymentStrategyType.Standard => new[] { deploymentTaskYaml },
-            DeploymentStrategyType.Rolling => new[]
-            {
-                YamlBuilder.PowerShellStep($"""
-$batchSize = {config.BatchSize}
-Write-Host "Rolling deployment to {environment} with batch size $batchSize"
-""", "Rolling deployment - batch orchestration"),
-                deploymentTaskYaml
-            },
             DeploymentStrategyType.BlueGreen => new[]
             {
-                YamlBuilder.PowerShellStep($"Write-Host 'Blue-green: deploy to inactive environment for {environment}'", "Blue-green deploy"),
                 deploymentTaskYaml,
-                YamlBuilder.PowerShellStep("Write-Host 'Blue-green: switch traffic after health check'", "Blue-green traffic switch")
+                YamlBuilder.PowerShellStep(
+                    $"Write-Warning 'Blue-green: switch traffic to the new environment for {environment} here (load balancer / DNS).'",
+                    "Blue-green traffic switch (placeholder)")
             },
             DeploymentStrategyType.Canary => new[]
             {
-                YamlBuilder.PowerShellStep($"Write-Host 'Canary: route {config.CanaryPercentage}% traffic for {environment}'", "Canary deployment"),
+                YamlBuilder.PowerShellStep(
+                    $"Write-Warning 'Canary: route {config.CanaryPercentage}% of traffic for {environment} here before full rollout (load balancer).'",
+                    "Canary traffic split (placeholder)"),
                 deploymentTaskYaml
             },
             DeploymentStrategyType.SlotSwap => new[]
@@ -36,8 +37,9 @@ Write-Host "Rolling deployment to {environment} with batch size $batchSize"
                 deploymentTaskYaml,
                 YamlBuilder.Task("AzureAppServiceManage@0", new Dictionary<string, string>
                 {
+                    ["azureSubscription"] = "$(AZURE_SERVICE_CONNECTION)",
                     ["Action"] = "Swap Slots",
-                    ["WebAppName"] = "$(WEBAPP_NAME)",
+                    ["WebAppName"] = webAppName,
                     ["ResourceGroupName"] = "$(RESOURCE_GROUP)",
                     ["SourceSlot"] = config.SlotName ?? "staging",
                     ["SwapWithProduction"] = "true"
@@ -50,9 +52,10 @@ Write-Host "Rolling deployment to {environment} with batch size $batchSize"
     public string GetStrategyNote(DeploymentStrategyConfig config) =>
         config.StrategyType switch
         {
-            DeploymentStrategyType.Canary => $"Canary releases {config.CanaryPercentage}% traffic before full promotion.",
-            DeploymentStrategyType.SlotSwap => "Slot swap requires staging slot deployment and health validation.",
-            DeploymentStrategyType.BlueGreen => "Blue-green keeps two environments; switch only after health checks pass.",
-            _ => $"Using {config.StrategyType} deployment strategy."
+            DeploymentStrategyType.Rolling => $"Rolling deploys to {Math.Max(1, config.BatchSize)} server(s) at a time. Requires servers registered in the Azure DevOps environment (on-premises target).",
+            DeploymentStrategyType.Canary => $"Canary releases {config.CanaryPercentage}% traffic before full promotion. Traffic routing must be added for your load balancer.",
+            DeploymentStrategyType.SlotSwap => "Deploys to the staging slot, then swaps it into production.",
+            DeploymentStrategyType.BlueGreen => "Blue-green keeps two environments; add the traffic switch for your load balancer.",
+            _ => "Deploys the whole environment in one go."
         };
 }

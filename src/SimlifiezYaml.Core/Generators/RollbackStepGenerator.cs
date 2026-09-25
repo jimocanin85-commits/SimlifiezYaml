@@ -13,6 +13,7 @@ public sealed class RollbackStepGenerator : IStepGenerator
     {
         if (!definition.Rollback.Enabled)
             return Array.Empty<string>();
-        return _rollbackService.GenerateRollbackSteps(definition.Rollback).ToList();
+        var env = environment ?? definition.Environments.LastOrDefault() ?? "prod";
+        return _rollbackService.GenerateRollbackSteps(definition.Rollback, definition.Deployment, env);
     }
 }

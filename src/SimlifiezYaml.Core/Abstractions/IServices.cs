@@ -18,14 +18,31 @@ public interface IKeyVaultYamlService
 
 public interface IArtifactYamlService
 {
+    /// <summary>Steps that produce the deployable output (e.g. <c>dotnet publish</c>) before it is packaged.</summary>
+    IReadOnlyList<string> GenerateBuildOutputSteps(PipelineDefinition definition);
     IReadOnlyList<string> GeneratePublishSteps(ArtifactConfig config);
     IReadOnlyList<string> GenerateDownloadSteps(ArtifactConfig config, string? environment = null);
+
+    /// <summary>Path of the downloaded package (folder or zip file) inside a deployment job.</summary>
+    string GetDeployPackagePath(ArtifactConfig config);
 }
 
 public interface IRollbackYamlService
 {
-    IReadOnlyList<string> GenerateBackupSteps(RollbackConfig config, string environment);
-    IReadOnlyList<string> GenerateRollbackSteps(RollbackConfig config);
+    /// <summary>Steps run in the deploy job before deploying, to snapshot the current version.</summary>
+    IReadOnlyList<string> GenerateBackupSteps(RollbackConfig config, DeploymentConfig deployment, string environment);
+
+    /// <summary>Steps run in the deploy job's <c>on: failure</c> hook to restore the snapshot.</summary>
+    IReadOnlyList<string> GenerateRollbackSteps(RollbackConfig config, DeploymentConfig deployment, string environment);
+
+    /// <summary>The rollback target in effect: follows the deployment kind unless that is Custom.</summary>
+    RollbackTarget ResolveTarget(RollbackConfig config, DeploymentConfig deployment);
+}
+
+public interface IDeploymentStepService
+{
+    /// <summary>Steps that deploy the downloaded package to the target.</summary>
+    IReadOnlyList<string> GenerateDeploySteps(PipelineDefinition definition, string environment, string packagePath);
 }
 
 public interface IHealthCheckYamlService
@@ -45,7 +62,7 @@ public interface IIacYamlService
 
 public interface IDeploymentStrategyService
 {
-    IReadOnlyList<string> GenerateStrategySteps(DeploymentStrategyConfig config, string environment, string deploymentTaskYaml);
+    IReadOnlyList<string> GenerateStrategySteps(DeploymentStrategyConfig config, string environment, string deploymentTaskYaml, string webAppName = "$(WEBAPP_NAME)");
     string GetStrategyNote(DeploymentStrategyConfig config);
 }
 

@@ -52,6 +52,7 @@ public sealed class PipelineDefinition
     public IReadOnlyList<VariableGroupConfig> VariableGroups { get; set; } = Array.Empty<VariableGroupConfig>();
     public KeyVaultConfig? KeyVault { get; set; }
     public ArtifactConfig Artifact { get; set; } = new();
+    public DeploymentConfig Deployment { get; set; } = new();
     public RollbackConfig Rollback { get; set; } = new();
     public IReadOnlyList<HealthCheckConfig> HealthChecks { get; set; } = Array.Empty<HealthCheckConfig>();
     public IReadOnlyList<NotificationConfig> Notifications { get; set; } = Array.Empty<NotificationConfig>();

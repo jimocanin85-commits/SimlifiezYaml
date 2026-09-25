@@ -70,7 +70,9 @@ public sealed class IacYamlService : IIacYamlService
             ["environmentServiceNameAzureRM"] = config.ServiceConnection
         }, "Terraform plan"));
 
-        if (!config.PlanOnly && (!config.ApplyOnApproval || environment != "prod"))
+        // Approval gating is done by the environment the Infrastructure job targets
+        // (see InfrastructureAsCodeConfig.ApplyOnApproval), not by skipping apply here.
+        if (!config.PlanOnly)
         {
             steps.Add(YamlBuilder.Task("TerraformTaskV4@4", new Dictionary<string, string>
             {

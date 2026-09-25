@@ -1,8 +1,13 @@
 using SimlifiezYaml.Core.Abstractions;
 using SimlifiezYaml.Core.Models;
+using SimlifiezYaml.Core.Yaml;
 
 namespace SimlifiezYaml.Core.Generators;
 
+/// <summary>
+/// Builds the deployable output (e.g. <c>dotnet publish</c>) and publishes it as an artifact.
+/// This runs in its own job, so it produces its own output rather than relying on the Build job's agent.
+/// </summary>
 public sealed class ArtifactStageGenerator : IStageGenerator
 {
     private readonly IArtifactYamlService _artifactService;
@@ -13,7 +18,9 @@ public sealed class ArtifactStageGenerator : IStageGenerator
 
     public string Generate(PipelineDefinition definition)
     {
-        var steps = string.Join(Environment.NewLine, _artifactService.GeneratePublishSteps(definition.Artifact));
+        var pool = PoolConfigurationHelper.GeneratePoolConfiguration(definition.BuildAgent, definition.PoolName);
+        var steps = string.Join("\n", _artifactService.GenerateBuildOutputSteps(definition)
+            .Concat(_artifactService.GeneratePublishSteps(definition.Artifact)));
         return $"""
 - stage: Artifact
   displayName: 'Publish artifacts'
@@ -21,9 +28,11 @@ public sealed class ArtifactStageGenerator : IStageGenerator
   condition: succeeded()
   jobs:
   - job: PublishArtifact
-    displayName: 'Publish build output'
+    displayName: 'Package build output'
+    pool:
+      {pool}
     steps:
-{Yaml.YamlBuilder.Indent(steps, 6)}
+{YamlBuilder.Indent(steps, 6)}
 """;
     }
 }

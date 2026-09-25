@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using SimlifiezYaml.Core.Abstractions;
 using SimlifiezYaml.Core.Enums;
+using SimlifiezYaml.Core.Generators;
 using SimlifiezYaml.Core.Models;
 
 namespace SimlifiezYaml.Core.Services;
@@ -21,21 +22,21 @@ public sealed class GovernanceValidationService : IGovernanceValidationService
 
         if (governance.RequiredApprovals)
         {
-            foreach (var env in new[] { "preprod", "prod" })
+            // Approvals live on the Azure DevOps environment, so the YAML cannot prove they exist.
+            // Remind the user for every environment that should be gated.
+            foreach (var env in definition.Environments.Where(e => e.Contains("prod", StringComparison.OrdinalIgnoreCase)))
             {
-                if (definition.Environments.Contains(env, StringComparer.OrdinalIgnoreCase)
-                    && !yaml.Contains($"environment: {env}", StringComparison.OrdinalIgnoreCase))
+                results.Add(new ValidationResult
                 {
-                    results.Add(new ValidationResult
-                    {
-                        Severity = ValidationSeverity.Warning,
-                        Message = $"Environment '{env}' should use Azure DevOps environment approvals.",
-                        AffectedField = "Environments",
-                        SuggestedFix = "Configure approvals in Azure DevOps Environments for preprod and prod."
-                    });
-                }
+                    Severity = ValidationSeverity.Info,
+                    Message = $"Add an approval check to the '{env}' environment in Azure DevOps (Pipelines > Environments > {env} > Approvals and checks).",
+                    AffectedField = "Environments",
+                    SuggestedFix = "Approvals are configured on the environment, not in YAML."
+                });
             }
         }
+
+        results.AddRange(ValidateDeployment(definition));
 
         if (governance.RequireHealthCheck && definition.Environments.Contains("prod"))
         {
@@ -133,4 +134,75 @@ public sealed class GovernanceValidationService : IGovernanceValidationService
         results.AddRange(_variableGroupService.Validate(definition.VariableGroups, governance));
         return results;
     }
+
+    private static IEnumerable<ValidationResult> ValidateDeployment(PipelineDefinition definition)
+    {
+        var deployment = definition.Deployment;
+        var strategy = definition.DeploymentStrategy.StrategyType;
+        var onServers = DeploymentStageGenerator.UsesServerResources(definition);
+
+        if (deployment.Kind == DeploymentKind.Custom && string.IsNullOrWhiteSpace(deployment.CustomScript))
+        {
+            yield return Result(ValidationSeverity.Warning,
+                "No deployment kind is selected, so the deploy step is only a placeholder.",
+                nameof(PipelineDefinition.Deployment),
+                "Choose IIS, Windows service, file share, App Service or Docker, or provide a custom deploy script.");
+        }
+
+        if (deployment.IsServerDeployment && definition.DeploymentTarget == DeploymentTarget.Cloud)
+        {
+            yield return Result(ValidationSeverity.Warning,
+                $"{deployment.Kind} deployments need your own servers, but the deployment target is Cloud, so they would run on a hosted build agent.",
+                nameof(PipelineDefinition.DeploymentTarget),
+                "Set the deployment target to OnPrem or Hybrid and register the servers in each Azure DevOps environment.");
+        }
+
+        if (onServers)
+        {
+            yield return Result(ValidationSeverity.Info,
+                "Deployments run on the servers registered in each Azure DevOps environment (Virtual machine resources).",
+                nameof(PipelineDefinition.Environments),
+                "Register the target servers under Pipelines > Environments > <environment> > Add resource > Virtual machines.");
+        }
+
+        if (strategy == DeploymentStrategyType.Rolling && !onServers)
+        {
+            yield return Result(ValidationSeverity.Warning,
+                "Rolling deployments need servers registered in the environment; this pipeline deploys everything at once.",
+                nameof(PipelineDefinition.DeploymentStrategy),
+                "Use an on-premises deployment target, or choose the Standard strategy.");
+        }
+
+        if (strategy is DeploymentStrategyType.Canary or DeploymentStrategyType.BlueGreen)
+        {
+            yield return Result(ValidationSeverity.Warning,
+                $"{strategy} traffic routing depends on your load balancer and is generated as a placeholder step.",
+                nameof(PipelineDefinition.DeploymentStrategy),
+                "Replace the placeholder step with your traffic-switch commands.");
+        }
+
+        if (strategy == DeploymentStrategyType.SlotSwap && deployment.Kind != DeploymentKind.AzureAppService)
+        {
+            yield return Result(ValidationSeverity.Error,
+                "The slot-swap strategy only works with Azure App Service deployments.",
+                nameof(PipelineDefinition.DeploymentStrategy),
+                "Set the deployment kind to Azure App Service, or choose another strategy.");
+        }
+
+        if (definition.Rollback.Enabled && deployment.Kind == DeploymentKind.AzureAppService)
+        {
+            yield return Result(ValidationSeverity.Info,
+                "App Service rollback is not automatic: the failure hook prints the command to swap the slots back.",
+                nameof(PipelineDefinition.Rollback),
+                "Use the slot-swap strategy so production only changes after the new version is deployed.");
+        }
+    }
+
+    private static ValidationResult Result(ValidationSeverity severity, string message, string field, string fix) => new()
+    {
+        Severity = severity,
+        Message = message,
+        AffectedField = field,
+        SuggestedFix = fix
+    };
 }
